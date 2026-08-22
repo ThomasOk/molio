@@ -120,6 +120,105 @@
   }
 }
 
+/* ---------------------------------------------------------------------------
+ * Stride design tokens
+ *
+ * Source of truth: Claude Design project "Stride - Design System.dc.html".
+ * OKLCH values from the design are pre-converted to hex here because React
+ * Native's color parser does not understand oklch().
+ *
+ * The design is dark-first, so `@theme` carries the dark values as the static
+ * fallback. `@variant light` / `@variant dark` are Uniwind's theming mechanism
+ * and are what actually resolve at runtime (see uniwind theming docs).
+ * ------------------------------------------------------------------------- */
+@theme {
+  /* Typography — one family per weight, as React Native does not synthesise
+     weights for custom fonts. Names match the keys loaded by useStrideFonts. */
+  --font-stride: 'Manrope_400Regular';
+  --font-stride-medium: 'Manrope_500Medium';
+  --font-stride-semibold: 'Manrope_600SemiBold';
+  --font-stride-bold: 'Manrope_700Bold';
+  --font-stride-black: 'Manrope_800ExtraBold';
+  --font-stride-mono: 'JetBrainsMono_400Regular';
+  --font-stride-mono-medium: 'JetBrainsMono_500Medium';
+
+  /* Colors — dark direction (fallback) */
+  --color-stride-bg: #0A0D0B;
+  --color-stride-elevated: #0E1310;
+  --color-stride-surface: #111614;
+  --color-stride-raised: #181F1B;
+  --color-stride-border: #1F2622;
+  --color-stride-hairline: rgba(255, 255, 255, 0.06);
+  --color-stride-ring: rgba(255, 255, 255, 0.07);
+  --color-stride-primary: #54C66C;
+  --color-stride-primary-dim: #3C8D57;
+  --color-stride-accent: #C0F35D;
+  --color-stride-accent-ring: rgba(192, 243, 93, 0.2);
+  --color-stride-xp: #E6B55D;
+  --color-stride-xp-dim: #A67F38;
+  --color-stride-text: #E8EFE9;
+  --color-stride-text-secondary: #8C9A90;
+  --color-stride-text-body: #C9D5CD;
+  --color-stride-label: #6E7C74;
+  --color-stride-muted: #5E6B63;
+  --color-stride-text-empty: #3E4844;
+  --color-stride-inactive: #1B221E;
+  --color-stride-danger: #BF6C58;
+  --color-stride-on-accent: #06120B;
+}
+
+@variant dark {
+  --color-stride-bg: #0A0D0B;
+  --color-stride-elevated: #0E1310;
+  --color-stride-surface: #111614;
+  --color-stride-raised: #181F1B;
+  --color-stride-border: #1F2622;
+  --color-stride-hairline: rgba(255, 255, 255, 0.06);
+  --color-stride-ring: rgba(255, 255, 255, 0.07);
+  --color-stride-primary: #54C66C;
+  --color-stride-primary-dim: #3C8D57;
+  --color-stride-accent: #C0F35D;
+  --color-stride-accent-ring: rgba(192, 243, 93, 0.2);
+  --color-stride-xp: #E6B55D;
+  --color-stride-xp-dim: #A67F38;
+  --color-stride-text: #E8EFE9;
+  --color-stride-text-secondary: #8C9A90;
+  --color-stride-text-body: #C9D5CD;
+  --color-stride-label: #6E7C74;
+  --color-stride-muted: #5E6B63;
+  --color-stride-text-empty: #3E4844;
+  --color-stride-inactive: #1B221E;
+  --color-stride-danger: #BF6C58;
+  --color-stride-on-accent: #06120B;
+}
+
+/* Light is not an inversion: primary drops in lightness to hold 4.5:1 on a
+   light ground, and the backgrounds keep a warm stone tint. */
+@variant light {
+  --color-stride-bg: #F3F5F0;
+  --color-stride-elevated: #FFFFFF;
+  --color-stride-surface: #EAEEE7;
+  --color-stride-raised: #E1E7DC;
+  --color-stride-border: #D6DED1;
+  --color-stride-hairline: rgba(10, 20, 14, 0.08);
+  --color-stride-ring: rgba(10, 20, 14, 0.07);
+  --color-stride-primary: #2A904B;
+  --color-stride-primary-dim: #73B785;
+  --color-stride-accent: #7AB22C;
+  --color-stride-accent-ring: rgba(122, 178, 44, 0.25);
+  --color-stride-xp: #B07A20;
+  --color-stride-xp-dim: #C9A05A;
+  --color-stride-text: #0F1512;
+  --color-stride-text-secondary: #5A665E;
+  --color-stride-text-body: #2E3A33;
+  --color-stride-label: #7A867E;
+  --color-stride-muted: #8A968D;
+  --color-stride-text-empty: #B8C0B9;
+  --color-stride-inactive: #DDE3D9;
+  --color-stride-danger: #B05139;
+  --color-stride-on-accent: #F3F5F0;
+}
+
 /* Custom utilities (if needed) */
 @layer utilities {
   .text-balance {

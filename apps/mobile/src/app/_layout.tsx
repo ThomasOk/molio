@@ -14,6 +14,7 @@ import { hydrateAuth } from '@/features/auth/use-auth-store';
 
 import { APIProvider } from '@/lib/api';
 import { loadSelectedTheme } from '@/lib/hooks/use-selected-theme';
+import { useStrideFonts } from '@/lib/theme';
 // Import  global CSS file
 import '../global.css';
 
@@ -36,15 +37,27 @@ SplashScreen.setOptions({
 
 export default function RootLayout() {
   const hasHiddenSplashRef = React.useRef(false);
+  const hasLaidOutRef = React.useRef(false);
+  // Stride's typography is load-bearing, so hold the splash until Manrope and
+  // JetBrains Mono are ready rather than flashing a fallback face.
+  const fontsLoaded = useStrideFonts();
 
-  const onLayoutRootView = React.useCallback(() => {
-    if (hasHiddenSplashRef.current) {
+  const hideSplash = React.useCallback(() => {
+    if (hasHiddenSplashRef.current || !hasLaidOutRef.current || !fontsLoaded) {
       return;
     }
 
     hasHiddenSplashRef.current = true;
     SplashScreen.hide();
-  }, []);
+  }, [fontsLoaded]);
+
+  // Layout usually wins the race against font loading, so both paths retry.
+  React.useEffect(hideSplash, [hideSplash]);
+
+  const onLayoutRootView = React.useCallback(() => {
+    hasLaidOutRef.current = true;
+    hideSplash();
+  }, [hideSplash]);
 
   return (
     <Providers onLayout={onLayoutRootView}>
