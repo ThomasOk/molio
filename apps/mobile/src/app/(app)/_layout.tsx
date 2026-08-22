@@ -1,12 +1,7 @@
-import { Link, Redirect, Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
 import * as React from 'react';
 
-import { Pressable, Text } from '@/components/ui';
-import {
-  Feed as FeedIcon,
-  Settings as SettingsIcon,
-  Style as StyleIcon,
-} from '@/components/ui/icons';
+import { StrideTabBar } from '@/components/ui/stride-tab-bar';
 import { useAuthStore as useAuth } from '@/features/auth/use-auth-store';
 import { useIsFirstTime } from '@/lib/hooks/use-is-first-time';
 
@@ -21,45 +16,31 @@ export default function TabLayout() {
     return <Redirect href="/login" />;
   }
   return (
-    <Tabs>
+    <Tabs
+      screenOptions={{ headerShown: false }}
+      tabBar={props => <StrideTabBar {...props} />}
+    >
       <Tabs.Screen
         name="index"
-        options={{
-          title: 'Feed',
-          tabBarIcon: ({ color }) => <FeedIcon color={color} />,
-          headerRight: () => <CreateNewPostLink />,
-          tabBarButtonTestID: 'feed-tab',
-        }}
+        options={{ title: 'Home', tabBarButtonTestID: 'home-tab' }}
+      />
+      <Tabs.Screen
+        name="progress"
+        options={{ title: 'Progress', tabBarButtonTestID: 'progress-tab' }}
+      />
+      <Tabs.Screen
+        name="stats"
+        options={{ title: 'Stats', tabBarButtonTestID: 'stats-tab' }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{ title: 'Profile', tabBarButtonTestID: 'profile-tab' }}
       />
 
-      <Tabs.Screen
-        name="style"
-        options={{
-          title: 'Style',
-          headerShown: false,
-          tabBarIcon: ({ color }) => <StyleIcon color={color} />,
-          tabBarButtonTestID: 'style-tab',
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: 'Settings',
-          headerShown: false,
-          tabBarIcon: ({ color }) => <SettingsIcon color={color} />,
-          tabBarButtonTestID: 'settings-tab',
-        }}
-      />
+      {/* Template screens kept routable but off the bar; Profile will link to
+          Settings once that screen is built. */}
+      <Tabs.Screen name="settings" options={{ href: null }} />
+      <Tabs.Screen name="style" options={{ href: null }} />
     </Tabs>
-  );
-}
-
-function CreateNewPostLink() {
-  return (
-    <Link href="/feed/add-post" asChild>
-      <Pressable>
-        <Text className="px-3 text-primary-300">Create</Text>
-      </Pressable>
-    </Link>
   );
 }

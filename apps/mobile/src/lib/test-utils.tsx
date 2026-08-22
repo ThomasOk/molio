@@ -6,13 +6,23 @@ import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { NavigationContainer } from '@react-navigation/native';
 import { render, userEvent } from '@testing-library/react-native';
 import * as React from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import '@shopify/flash-list/jestSetup';
+
+// Screens read safe-area insets, which have no value outside a provider.
+// A stock notched-phone frame keeps rendered layouts realistic in tests.
+const INITIAL_METRICS = {
+  frame: { x: 0, y: 0, width: 390, height: 844 },
+  insets: { top: 47, left: 0, right: 0, bottom: 34 },
+};
 
 function createAppWrapper() {
   return ({ children }: { children: React.ReactNode }) => (
-    <BottomSheetModalProvider>
-      <NavigationContainer>{children}</NavigationContainer>
-    </BottomSheetModalProvider>
+    <SafeAreaProvider initialMetrics={INITIAL_METRICS}>
+      <BottomSheetModalProvider>
+        <NavigationContainer>{children}</NavigationContainer>
+      </BottomSheetModalProvider>
+    </SafeAreaProvider>
   );
 }
 
