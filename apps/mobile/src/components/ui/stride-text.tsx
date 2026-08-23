@@ -18,7 +18,7 @@ const strideText = tv({
   variants: {
     variant: {
       /** 58 / 800 / -4.5% — the step count on Home. The hero number. */
-      'hero': 'font-stride-black text-[58px] leading-[52px] tracking-[-2.6px]',
+      'hero': 'font-stride-black text-[58px] leading-[58px] tracking-[-2.6px]',
       /** 44 / 800 / -4% — large metric on Stats and share cards. */
       'metric': 'font-stride-black text-[44px] leading-[44px] tracking-[-1.8px]',
       /** 24 / 800 / -3% — the number inside a stat card. */
