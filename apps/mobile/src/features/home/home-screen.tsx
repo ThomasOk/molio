@@ -3,6 +3,7 @@ import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FocusAwareStatusBar } from '@/components/ui';
+import { GardenLabLink } from '@/features/garden/components/garden-lab-link';
 import { HomeHeader } from '@/features/home/components/home-header';
 import { HomeStatsRow } from '@/features/home/components/home-stats-row';
 import { MiniProgressCard } from '@/features/home/components/mini-progress-card';
@@ -50,6 +51,7 @@ export function HomeScreen() {
           hint={hasHistory ? undefined : EMPTY_HINT}
         />
         <ScenarioSwitcher />
+        <GardenLabLink />
       </ScrollView>
     </View>
   );

@@ -65,6 +65,8 @@ export default function RootLayout() {
         <Stack.Screen name="(app)" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />
+        {/* Design spike for the botanical DA — reachable from Home in dev. */}
+        <Stack.Screen name="garden" options={{ headerShown: false }} />
       </Stack>
     </Providers>
   );
