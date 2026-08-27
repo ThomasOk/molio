@@ -47,6 +47,15 @@ export type GardenPalette = {
   ring: string;
   ringTrack: string;
   ringDone: string;
+  /**
+   * The sync interaction's tint — pull-to-sync charge and the working sweep.
+   *
+   * The garden's own ink, never a foreign hue: the effect is glass, not colour.
+   * step-ring shows it translucent and capped, so it reads as smoked glass
+   * gathering over the paper rather than an opaque mark painted on it. On a light
+   * ground only a dark translucency is visible — a white glint would vanish.
+   */
+  ringSync: string;
   /** Ground haze colour, painted as a bottom-up gradient. */
   haze: string;
   grassBack: string;
@@ -72,6 +81,7 @@ const LIGHT: GardenPalette = {
   ring: '#3E6B47',
   ringTrack: '#E4DFD1',
   ringDone: '#7AB22C',
+  ringSync: '#9E5F46',
   haze: '#9DBE72',
   grassBack: '#A8C583',
   grassFront: '#6E9A4F',
@@ -112,6 +122,7 @@ const DARK: GardenPalette = {
   ring: '#4E8A5A',
   ringTrack: '#1C2620',
   ringDone: '#9BD24E',
+  ringSync: '#BD7D64',
   haze: '#24402C',
   grassBack: '#223A29',
   grassFront: '#3A6040',
@@ -196,3 +207,14 @@ export function shiftHue(color: string, amount: number): string {
   const strength = Math.abs(amount) * 0.16;
   return mixHex(color, amount >= 0 ? WHITE : BLACK, strength);
 }
+
+/**
+ * The cream the paintings are on, measured off the normalised set and identical
+ * across all eight. Give the screen behind them this exact value and the
+ * painting stops being a rectangle: paper and background are one surface, which
+ * is what removed the alpha fade the ADR originally called for.
+ *
+ * The flip side is that this screen has no dark mode until the artwork is
+ * repainted. ADR 0001, amendment 2026-08-25.
+ */
+export const GARDEN_PAPER = '#FAF4E8';

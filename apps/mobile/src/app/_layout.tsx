@@ -9,6 +9,7 @@ import { StyleSheet } from 'react-native';
 import FlashMessage from 'react-native-flash-message';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
+import { Toaster } from 'sonner-native';
 import { useThemeConfig } from '@/components/ui/use-theme-config';
 import { hydrateAuth } from '@/features/auth/use-auth-store';
 
@@ -65,8 +66,11 @@ export default function RootLayout() {
         <Stack.Screen name="(app)" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />
-        {/* Design spike for the botanical DA — reachable from Home in dev. */}
+        {/* The botanical home, and its test bench — both reachable from Home
+            in dev. */}
         <Stack.Screen name="garden" options={{ headerShown: false }} />
+        <Stack.Screen name="garden-lab" options={{ headerShown: false }} />
+        <Stack.Screen name="garden-level" options={{ headerShown: false }} />
       </Stack>
     </Providers>
   );
@@ -93,6 +97,7 @@ function Providers({
             <BottomSheetModalProvider>
               {children}
               <FlashMessage position="top" />
+              <Toaster />
             </BottomSheetModalProvider>
           </APIProvider>
         </ThemeProvider>

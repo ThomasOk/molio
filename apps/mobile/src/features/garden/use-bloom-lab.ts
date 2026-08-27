@@ -1,3 +1,4 @@
+import type { SharedValue } from 'react-native-reanimated';
 import * as React from 'react';
 import {
   cancelAnimation,
@@ -14,9 +15,10 @@ import { scheduleOnRN } from 'react-native-worklets';
 import {
   abundanceFromProgress,
   bandIndexFor,
-  bloomDuration,
   bloomFromProgress,
   clamp,
+  counterDuration,
+  gardenDuration,
   MAX_STEPS,
 } from './bloom';
 import { SWAY_LOOP_MS } from './flora';
@@ -29,6 +31,15 @@ import { SWAY_LOOP_MS } from './flora';
 const EASE_BLOOM = Easing.inOut(Easing.cubic);
 /** Quicker curve for folding the garden back to zero on reset. */
 const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
+
+/** Send one clock to a fraction of the range over `duration`, on the bloom curve. */
+function bloomTo(
+  clock: SharedValue<number>,
+  fraction: number,
+  duration: number,
+) {
+  clock.set(withTiming(fraction, { duration, easing: EASE_BLOOM }));
+}
 
 /**
  * One linear 0 → 1 clock, looping forever.
@@ -84,12 +95,18 @@ export function useBloomLab() {
   const [bandIndex, setBandIndex] = React.useState(0);
   const [refreshing, setRefreshing] = React.useState(false);
   const [lastDelta, setLastDelta] = React.useState<number | null>(null);
+  const [committedSteps, setCommittedSteps] = React.useState(0);
 
   /** Steps as last committed. Each animation runs from here to the new value. */
   const committedStepsRef = React.useRef(0);
   const syncTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // The garden clock. Drives the flipbook, the bloom and the abundance.
   const progress = useSharedValue(0);
+  // The instrument clock, decoupled from the garden so the digits and their
+  // ring can settle quickly while the garden takes its time. Same destination,
+  // different speed — see bloom.ts.
+  const counter = useSharedValue(0);
   const bloom = useDerivedValue(() => bloomFromProgress(progress.get()));
   const abundance = useDerivedValue(() => abundanceFromProgress(progress.get()));
   const clock = useLoopClock(motion, SWAY_LOOP_MS);
@@ -104,9 +121,10 @@ export function useBloomLab() {
 
   // The band label changes six times across the whole range, not 120 times a
   // second. The comparison runs on the UI thread every frame; the hop back to
-  // React happens only when the answer actually changes.
+  // React happens only when the answer actually changes. It rides the counter,
+  // not the garden, so the label always matches the number on screen.
   useAnimatedReaction(
-    () => bandIndexFor(progress.get()),
+    () => bandIndexFor(counter.get()),
     (next, previous) => {
       if (next !== previous)
         scheduleOnRN(setBandIndex, next);
@@ -117,34 +135,37 @@ export function useBloomLab() {
     (nextSteps: number) => {
       const target = Math.round(clamp(nextSteps, 0, MAX_STEPS));
       const delta = target - committedStepsRef.current;
-      const duration = bloomDuration(delta);
 
       committedStepsRef.current = target;
+      setCommittedSteps(target);
       setLastDelta(delta);
 
       // A sync that brought nothing back does not replay the bloom. This is the
       // rule that keeps the animation a signal instead of a loading skin.
-      if (duration === 0)
+      if (delta === 0)
         return;
 
-      progress.set(
-        withTiming(target / MAX_STEPS, { duration, easing: EASE_BLOOM }),
-      );
+      const fraction = target / MAX_STEPS;
+      bloomTo(counter, fraction, counterDuration(delta));
+      bloomTo(progress, fraction, gardenDuration(delta));
     },
-    [progress],
+    [counter, progress],
   );
 
   /** The scrubber already moved `progress` by hand; just record where it left. */
   const adopt = React.useCallback((steps: number) => {
     committedStepsRef.current = Math.round(steps);
+    setCommittedSteps(Math.round(steps));
     setLastDelta(null);
   }, []);
 
   const reset = React.useCallback(() => {
     committedStepsRef.current = 0;
+    setCommittedSteps(0);
     setLastDelta(null);
+    counter.set(withTiming(0, { duration: 700, easing: EASE_OUT }));
     progress.set(withTiming(0, { duration: 700, easing: EASE_OUT }));
-  }, [progress]);
+  }, [counter, progress]);
 
   const sync = React.useCallback(() => {
     setRefreshing(true);
@@ -160,6 +181,7 @@ export function useBloomLab() {
 
   return {
     progress,
+    counter,
     bloom,
     abundance,
     clock,
@@ -168,6 +190,7 @@ export function useBloomLab() {
     systemReduced,
     bandIndex,
     lastDelta,
+    committedSteps,
     refreshing,
     commit,
     adopt,
