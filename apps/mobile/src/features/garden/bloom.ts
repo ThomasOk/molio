@@ -29,6 +29,19 @@
 export const MAX_STEPS = 20000;
 
 /**
+ * Steps that earn one level. The day's level is an ABSOLUTE scale — steps ÷
+ * 1 000 — quite apart from the goal ring, which fills against the user's own
+ * variable target. Level 10 is the 10 000-step mark, level 20 the full garden.
+ *
+ * Shared by the level screen today, and by the stats heatmap and the leaderboard
+ * trend once those land: all three read the same day → tier mapping.
+ */
+export const STEPS_PER_LEVEL = 1000;
+
+/** The day's top level, since the garden tops out at MAX_STEPS. */
+export const MAX_LEVEL = MAX_STEPS / STEPS_PER_LEVEL;
+
+/**
  * The palier at which the base garden is fully in flower — deliberately early,
  * under a third of the way in, so the flowers show up quickly rather than being
  * rationed out toward the goal. Past it the base is done and only the density
@@ -156,18 +169,49 @@ export function formatSteps(value: number): string {
 }
 
 /**
- * How long the garden takes to catch up, by size of the sync.
+ * The two clocks a sync runs on, in ms.
  *
- * Deliberately slow: this animation is the whole value of the screen, and a
- * bloom you cannot watch is decoration. A full 0 → 10 000 sweep takes ~4 s, a
- * 0 → 20 000 one ~6.5 s. A zero delta returns 0 and the caller skips the
- * animation entirely — replaying a bloom when nothing changed is the single
- * easiest way to make this whole idea meaningless.
+ * The counter and the garden are decoupled: one committed step target, two
+ * animations racing to it at different speeds. The counter is the instrument —
+ * the digits and their ring — and wants to be quick and legible. The garden is
+ * the reward, and a bloom you can watch settle is the whole point, so it runs
+ * slower. Neither is a second source of truth: the committed step count is the
+ * only state, these are just how fast each view catches up to it.
+ *
+ * The counter is fixed: a number that always takes the same time to read is
+ * calmer than one whose pace you have to relearn each sync. The garden scales
+ * with the delta instead — a bigger leap earns a longer bloom — ramping from
+ * GARDEN_MIN_MS for the smallest sync to GARDEN_MAX_MS for a full-range sweep.
  */
-export function bloomDuration(deltaSteps: number): number {
-  const delta = Math.abs(deltaSteps);
-  if (delta === 0)
+export const COUNTER_MS = 2000;
+export const GARDEN_MIN_MS = 2500;
+export const GARDEN_MAX_MS = 5500;
+
+/**
+ * How long the digits and their ring take to reach the new count.
+ *
+ * A zero delta returns 0 and the caller skips the animation entirely — replaying
+ * a bloom when nothing changed is the single easiest way to make this whole idea
+ * meaningless.
+ */
+export function counterDuration(deltaSteps: number): number {
+  if (deltaSteps === 0)
     return 0;
-  const fraction = Math.min(delta / MAX_STEPS, 1);
-  return Math.round(Math.min(1000 + fraction * 6000, 6500));
+  return COUNTER_MS;
+}
+
+/**
+ * How long the garden takes to catch up, scaled by the size of the sync. Same
+ * zero-delta rule as the counter.
+ *
+ * Linear in the fraction of the whole range the delta covers, so a 400-step
+ * sync settles near GARDEN_MIN_MS and only a 0 → 20 000 sweep reaches
+ * GARDEN_MAX_MS. The magnitude is what earns the time, so it reads the absolute
+ * delta — folding back to zero on reset has its own, quicker curve.
+ */
+export function gardenDuration(deltaSteps: number): number {
+  if (deltaSteps === 0)
+    return 0;
+  const fraction = Math.min(Math.abs(deltaSteps) / MAX_STEPS, 1);
+  return Math.round(GARDEN_MIN_MS + fraction * (GARDEN_MAX_MS - GARDEN_MIN_MS));
 }

@@ -16,6 +16,12 @@ const THUMB = 26;
 
 type Props = {
   progress: SharedValue<number>;
+  /**
+   * The counter clock, moved in lockstep with `progress` while dragging. The
+   * two only diverge on a committed sync; scrubbing keeps the digits and the
+   * garden pinned together, so the finger reads as one motion.
+   */
+  counter: SharedValue<number>;
   palette: GardenPalette;
   /** Called once, on release — never per frame. */
   onCommit: (steps: number) => void;
@@ -29,7 +35,7 @@ type Props = {
  * organic or does not. It writes `progress` directly on the UI thread — no
  * timing curve, no spring, the finger *is* the animation.
  */
-export function BloomScrubber({ progress, palette, onCommit }: Props) {
+export function BloomScrubber({ progress, counter, palette, onCommit }: Props) {
   const trackWidth = useSharedValue(1);
 
   const pan = React.useMemo(
@@ -39,17 +45,21 @@ export function BloomScrubber({ progress, palette, onCommit }: Props) {
         .activeOffsetX([-8, 8])
         .failOffsetY([-12, 12])
         .onStart((event) => {
-          progress.set(clamp(event.x / trackWidth.get(), 0, 1));
+          const p = clamp(event.x / trackWidth.get(), 0, 1);
+          progress.set(p);
+          counter.set(p);
         })
         .onUpdate((event) => {
-          progress.set(clamp(event.x / trackWidth.get(), 0, 1));
+          const p = clamp(event.x / trackWidth.get(), 0, 1);
+          progress.set(p);
+          counter.set(p);
         })
         // The only hop back to the RN runtime, and it happens once per drag.
         // The same call in `onUpdate` would fire 120 times a second.
         .onEnd(() => {
           scheduleOnRN(onCommit, progress.get() * MAX_STEPS);
         }),
-    [onCommit, progress, trackWidth],
+    [onCommit, progress, counter, trackWidth],
   );
 
   // An absolutely positioned, childless element is the one case where animating

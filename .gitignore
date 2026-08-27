@@ -19,3 +19,6 @@ apps/mobile/web-build/
 # Supabase local development
 supabase/.branches/
 supabase/.temp/
+
+# Local-only scratch space and agent issue tracker (kept out of the repo)
+.scratch/

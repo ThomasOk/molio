@@ -14,15 +14,14 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useUniwind } from 'uniwind';
 
 import { strideFonts } from '@/lib/theme';
 import { BANDS, formatSteps, MAX_STEPS, MILESTONES } from './bloom';
 import { AnimatedSteps } from './components/animated-steps';
 import { BloomScrubber } from './components/bloom-scrubber';
-import { GardenScene } from './components/garden-scene';
+import { GardenFlipbook } from './components/garden-flipbook';
 import { StepRing } from './components/step-ring';
-import { gardenPalettes } from './palette';
+import { GARDEN_PAPER, gardenPalettes } from './palette';
 import { useBloomLab } from './use-bloom-lab';
 
 /**
@@ -37,12 +36,10 @@ import { useBloomLab } from './use-bloom-lab';
  * anywhere in this file.
  */
 export function GardenLabScreen() {
-  const { theme } = useUniwind();
-  const appScheme: StrideScheme = theme === 'dark' ? 'dark' : 'light';
-  // A local override, so the theme button previews the garden in either scheme
-  // without touching the app's persisted theme. Defaults to following the app.
-  const [override, setOverride] = React.useState<StrideScheme | null>(null);
-  const scheme = override ?? appScheme;
+  // The paintings exist in one light only, so the lab is pinned to the light
+  // palette. Dark mode for this screen needs the artwork repainted, not a
+  // palette — ADR 0001, amendment 2026-08-25.
+  const scheme: StrideScheme = 'light';
   const palette = gardenPalettes[scheme];
 
   const insets = useSafeAreaInsets();
@@ -55,18 +52,16 @@ export function GardenLabScreen() {
   const sceneHeight = Math.round(height * 0.46);
 
   return (
-    <View style={{ flex: 1, backgroundColor: palette.bg }}>
+    // The screen wears the paper's own cream, so the painting reads as the
+    // surface rather than as a rectangle laid on one.
+    <View style={{ flex: 1, backgroundColor: GARDEN_PAPER }}>
       <StatusBar style={palette.scheme === 'dark' ? 'light' : 'dark'} />
 
-      {/* The garden is a band sitting on top of the control footer, not behind
-          it — a garden you cannot see is not a garden you can judge. */}
-      <GardenScene
-        bloom={lab.bloom}
-        abundance={lab.abundance}
-        clock={lab.motion ? lab.clock : null}
-        palette={palette}
+      {/* The garden sits on top of the control footer, not behind it — a
+          garden you cannot see is not a garden you can judge. */}
+      <GardenFlipbook
+        progress={lab.progress}
         width={width}
-        height={sceneHeight}
         offsetBottom={footerHeight}
       />
 
@@ -101,7 +96,7 @@ export function GardenLabScreen() {
 
         <LabHero
           palette={palette}
-          progress={lab.progress}
+          counter={lab.counter}
           bandIndex={lab.bandIndex}
           lastDelta={lab.lastDelta}
         />
@@ -110,9 +105,6 @@ export function GardenLabScreen() {
       <LabFooter
         palette={palette}
         lab={lab}
-        scheme={scheme}
-        onToggleScheme={() =>
-          setOverride(scheme === 'dark' ? 'light' : 'dark')}
         bottomInset={insets.bottom}
         onLayout={setFooterHeight}
       />
@@ -153,19 +145,19 @@ const RING_FOOTNOTE: TextStyle = {
 
 function LabHero({
   palette,
-  progress,
+  counter,
   bandIndex,
   lastDelta,
 }: {
   palette: GardenPalette;
-  progress: SharedValue<number>;
+  counter: SharedValue<number>;
   bandIndex: number;
   lastDelta: number | null;
 }) {
   return (
     <View style={{ alignItems: 'center', marginTop: 18 }}>
-      <StepRing progress={progress} palette={palette} size={208} stroke={6}>
-        <AnimatedSteps progress={progress} color={palette.ink} />
+      <StepRing progress={counter} palette={palette} size={208} stroke={6}>
+        <AnimatedSteps progress={counter} color={palette.ink} />
         <GText palette={palette} variant="caption" style={CENTERED_IN_RING}>
           pas aujourd'hui
         </GText>
@@ -197,15 +189,11 @@ function LabHero({
 function LabFooter({
   palette,
   lab,
-  scheme,
-  onToggleScheme,
   bottomInset,
   onLayout,
 }: {
   palette: GardenPalette;
   lab: ReturnType<typeof useBloomLab>;
-  scheme: StrideScheme;
-  onToggleScheme: () => void;
   bottomInset: number;
   onLayout: (height: number) => void;
 }) {
@@ -250,11 +238,6 @@ function LabFooter({
       >
         <Chip
           palette={palette}
-          label={scheme === 'dark' ? 'Thème · sombre' : 'Thème · clair'}
-          onPress={onToggleScheme}
-        />
-        <Chip
-          palette={palette}
           label={lab.motion ? 'Sway on' : 'Sway off'}
           active={lab.motion}
           onPress={() => lab.setMotion(value => !value)}
@@ -268,6 +251,7 @@ function LabFooter({
 
       <BloomScrubber
         progress={lab.progress}
+        counter={lab.counter}
         palette={palette}
         onCommit={lab.adopt}
       />

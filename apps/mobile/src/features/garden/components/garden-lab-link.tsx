@@ -14,7 +14,7 @@ export function GardenLabLink() {
     return null;
 
   return (
-    <View className="mt-4">
+    <View className="mt-4 flex-row gap-2">
       <Link href="/garden" asChild>
         <Pressable
           accessibilityRole="button"
@@ -25,7 +25,21 @@ export function GardenLabLink() {
           `}
         >
           <StrideText variant="label-sm" className="text-stride-text">
-            Dev · Bloom lab →
+            Dev · Garden home →
+          </StrideText>
+        </Pressable>
+      </Link>
+      <Link href="/garden-lab" asChild>
+        <Pressable
+          accessibilityRole="button"
+          hitSlop={6}
+          className={`
+            self-start rounded-lg border border-stride-hairline
+            bg-stride-surface px-[9px] py-[7px]
+          `}
+        >
+          <StrideText variant="label-sm" className="text-stride-text">
+            Bloom lab →
           </StrideText>
         </Pressable>
       </Link>
