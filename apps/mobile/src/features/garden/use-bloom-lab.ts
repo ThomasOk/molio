@@ -22,6 +22,7 @@ import {
   MAX_STEPS,
 } from './bloom';
 import { SWAY_LOOP_MS } from './flora';
+import { recordDaySteps } from './use-day-history';
 
 /**
  * The bloom curve. Gentle at both ends (`inOut`) so a long sync reads as a slow
@@ -79,6 +80,14 @@ function useLoopClock(enabled: boolean, loopMs: number) {
 
 /** How long the fake Health sync spins before it returns a delta. */
 const SYNC_MS = 1000;
+
+/**
+ * The fake Health delta. A real sync sometimes brings back nothing — one case in
+ * five here, so the "no delta, no bloom" path is actually visible while testing.
+ */
+function nextFakeDelta(): number {
+  return Math.random() < 0.2 ? 0 : 400 + Math.round(Math.random() * 2800);
+}
 
 /**
  * Everything the garden runs on.
@@ -139,6 +148,9 @@ export function useBloomLab() {
       committedStepsRef.current = target;
       setCommittedSteps(target);
       setLastDelta(delta);
+      // Mirror today's total into the durable day-history store the stats heatmap
+      // reads — even a zero-delta sync, which confirms the count without a bloom.
+      recordDaySteps(target);
 
       // A sync that brought nothing back does not replay the bloom. This is the
       // rule that keeps the animation a signal instead of a loading skin.
@@ -152,7 +164,7 @@ export function useBloomLab() {
     [counter, progress],
   );
 
-  /** The scrubber already moved `progress` by hand; just record where it left. */
+  // Dev scrubber only — note where it left, no day-history write (not real steps).
   const adopt = React.useCallback((steps: number) => {
     committedStepsRef.current = Math.round(steps);
     setCommittedSteps(Math.round(steps));
@@ -163,6 +175,7 @@ export function useBloomLab() {
     committedStepsRef.current = 0;
     setCommittedSteps(0);
     setLastDelta(null);
+    recordDaySteps(0);
     counter.set(withTiming(0, { duration: 700, easing: EASE_OUT }));
     progress.set(withTiming(0, { duration: 700, easing: EASE_OUT }));
   }, [counter, progress]);
@@ -171,11 +184,7 @@ export function useBloomLab() {
     setRefreshing(true);
     syncTimerRef.current = setTimeout(() => {
       setRefreshing(false);
-      // A real sync sometimes brings back nothing. One case in five, so the
-      // "no delta, no bloom" path is actually visible while testing.
-      const delta
-        = Math.random() < 0.2 ? 0 : 400 + Math.round(Math.random() * 2800);
-      commit(committedStepsRef.current + delta);
+      commit(committedStepsRef.current + nextFakeDelta());
     }, SYNC_MS);
   }, [commit]);
 

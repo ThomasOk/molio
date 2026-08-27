@@ -27,6 +27,7 @@ import { GardenFlipbook } from './components/garden-flipbook';
 import { GlassToast } from './components/glass-toast';
 import { PullLoader } from './components/pull-loader';
 import { StepRing } from './components/step-ring';
+import { TierSquares } from './components/tier-squares';
 import { clearLevelProgress } from './level-progress';
 import { GARDEN_PAPER, gardenPalettes } from './palette';
 import { PROFILE } from './profile';
@@ -38,6 +39,42 @@ type SyncPhase = 'idle' | 'syncing' | 'uptodate';
 
 /** How long "À jour" lingers after a sync that brought nothing back. */
 const UPTODATE_MS = 1400;
+
+/**
+ * The sync hint's three states, and the toasts that ride the end of a sync.
+ *
+ * 'syncing' derives straight from the flag; 'uptodate' is the only feedback a
+ * zero-delta sync gets — a real one is answered by the bloom itself — and it is a
+ * brief, self-clearing flash. Announces the delta when the sync finishes.
+ */
+function useSyncPhase(refreshing: boolean, lastDelta: number | null): SyncPhase {
+  const [uptodate, setUptodate] = React.useState(false);
+  const wasRefreshingRef = React.useRef(false);
+
+  React.useEffect(() => {
+    const justFinished = wasRefreshingRef.current && !refreshing;
+    wasRefreshingRef.current = refreshing;
+    if (!justFinished)
+      return;
+    if (lastDelta && lastDelta > 0) {
+      toast.custom(
+        <GlassToast title={`+${formatSteps(lastDelta)} pas synchronisés`} />,
+        { position: 'center' },
+      );
+      return;
+    }
+    toast.custom(<GlassToast title="Déjà à jour" />, { position: 'center' });
+    // Set only from timers so the effect never triggers a synchronous render.
+    const show = setTimeout(setUptodate, 0, true);
+    const hide = setTimeout(setUptodate, UPTODATE_MS, false);
+    return () => {
+      clearTimeout(show);
+      clearTimeout(hide);
+    };
+  }, [refreshing, lastDelta]);
+
+  return refreshing ? 'syncing' : uptodate ? 'uptodate' : 'idle';
+}
 
 /**
  * Garden home — the minimalist screen the garden was always meant to become.
@@ -61,40 +98,7 @@ export function GardenHomeScreen() {
   // opened the level screen to see yet. Clears on return from that screen.
   const hasUnseenLevelUp = useUnseenLevelUp(lab.committedSteps);
 
-  // The hint's three states. 'syncing' derives straight from the sync flag;
-  // 'uptodate' is the only feedback a zero-delta sync gets — a real one is
-  // answered by the bloom itself — and it is a brief, self-clearing flash.
-  const [uptodate, setUptodate] = React.useState(false);
-  const wasRefreshingRef = React.useRef(false);
-  React.useEffect(() => {
-    const justFinished = wasRefreshingRef.current && !lab.refreshing;
-    wasRefreshingRef.current = lab.refreshing;
-    if (!justFinished)
-      return;
-    // Announce the delta the sync brought back. A real one is also answered by
-    // the bloom; a zero one gets only this and the "À jour" hint.
-    if (lab.lastDelta && lab.lastDelta > 0) {
-      toast.custom(
-        <GlassToast title={`+${formatSteps(lab.lastDelta)} pas synchronisés`} />,
-        { position: 'center' },
-      );
-      return;
-    }
-    toast.custom(<GlassToast title="Déjà à jour" />, { position: 'center' });
-    // Set only from timers so the effect never triggers a synchronous render.
-    const show = setTimeout(setUptodate, 0, true);
-    const hide = setTimeout(setUptodate, UPTODATE_MS, false);
-    return () => {
-      clearTimeout(show);
-      clearTimeout(hide);
-    };
-  }, [lab.refreshing, lab.lastDelta]);
-
-  const phase: SyncPhase = lab.refreshing
-    ? 'syncing'
-    : uptodate
-      ? 'uptodate'
-      : 'idle';
+  const phase = useSyncPhase(lab.refreshing, lab.lastDelta);
 
   return (
     <View style={{ flex: 1, backgroundColor: GARDEN_PAPER }}>
@@ -145,9 +149,16 @@ export function GardenHomeScreen() {
           })}
       />
 
+      {/* A miniature heatmap, top-right — the way into the activity calendar. */}
+      <StatsButton
+        palette={palette}
+        top={insets.top + 8}
+        onPress={() => router.push('/garden-stats')}
+      />
+
       <ResetButton
         palette={palette}
-        top={insets.top + 12}
+        bottom={insets.bottom + 12}
         onPress={() => {
           lab.reset();
           clearLevelProgress();
@@ -198,10 +209,10 @@ function ProfileButton({
 }
 
 /**
- * A quiet way back to zero. Dev-facing while the screen runs on the mocked sync
- * — a real home would not let you erase your own steps.
+ * The way into the activity calendar — a 2×2 heatmap glyph, the screen it opens
+ * in miniature, rather than a foreign icon.
  */
-function ResetButton({
+function StatsButton({
   palette,
   onPress,
   top,
@@ -213,12 +224,52 @@ function ResetButton({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel="Voir mon activité"
+      hitSlop={14}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        position: 'absolute',
+        top,
+        right: 18,
+        padding: 4,
+        opacity: pressed ? 0.6 : 1,
+      })}
+    >
+      <TierSquares
+        tiers={[1, 3, 4, 2]}
+        columns={2}
+        rows={2}
+        size={7}
+        gap={2}
+        radius={2}
+        palette={palette}
+      />
+    </Pressable>
+  );
+}
+
+/**
+ * A quiet way back to zero. Dev-facing while the screen runs on the mocked sync
+ * — a real home would not let you erase your own steps.
+ */
+function ResetButton({
+  palette,
+  onPress,
+  bottom,
+}: {
+  palette: GardenPalette;
+  onPress: () => void;
+  bottom: number;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
       accessibilityLabel="Réinitialiser les pas"
       hitSlop={12}
       onPress={onPress}
       style={({ pressed }) => ({
         position: 'absolute',
-        top,
+        bottom,
         right: 20,
         opacity: pressed ? 0.5 : 1,
       })}
