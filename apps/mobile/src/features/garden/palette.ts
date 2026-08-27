@@ -57,6 +57,21 @@ export type GardenPalette = {
    */
   tiers: readonly [string, string, string, string, string];
   /**
+   * The level screen's XP bar — an ivory capsule holding a warm coral fill, its
+   * own warm accent apart from the green goal ring. Progress on the character
+   * sheet reads as a bloom, tying the bar to the profile flower and the heatmap's
+   * warm top tiers. A vertical fillTop→fillBottom gradient gives it depth; `gloss`
+   * is the specular highlight, `glow` the soft coral halo around the fill.
+   */
+  xp: {
+    capsule: string;
+    frame: string;
+    fillTop: string;
+    fillBottom: string;
+    gloss: string;
+    glow: string;
+  };
+  /**
    * The sync interaction's tint — pull-to-sync charge and the working sweep.
    *
    * The garden's own ink, never a foreign hue: the effect is glass, not colour.
@@ -91,6 +106,14 @@ const LIGHT: GardenPalette = {
   ringTrack: '#E4DFD1',
   ringDone: '#7AB22C',
   tiers: ['#E7E1D2', '#C7DE96', '#7CB53C', '#F2B23C', '#EE7A46'],
+  xp: {
+    capsule: '#FBF7EF',
+    frame: '#FFFFFF',
+    fillTop: '#F59B77',
+    fillBottom: '#E86A44',
+    gloss: 'rgba(255, 255, 255, 0.5)',
+    glow: 'rgba(232, 106, 68, 0.4)',
+  },
   ringSync: '#9E5F46',
   haze: '#9DBE72',
   grassBack: '#A8C583',
@@ -133,6 +156,14 @@ const DARK: GardenPalette = {
   ringTrack: '#1C2620',
   ringDone: '#9BD24E',
   tiers: ['#1C2620', '#31502A', '#4F7E2C', '#C6942F', '#C96A4C'],
+  xp: {
+    capsule: '#241712',
+    frame: '#3A241B',
+    fillTop: '#E88A63',
+    fillBottom: '#C96A4C',
+    gloss: 'rgba(255, 255, 255, 0.32)',
+    glow: 'rgba(201, 106, 76, 0.45)',
+  },
   ringSync: '#BD7D64',
   haze: '#24402C',
   grassBack: '#223A29',
