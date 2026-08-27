@@ -1,4 +1,128 @@
-# Handoff — jardin Molio : gamification, écran Niveau du jour
+# Handoff — jardin Molio : gamification
+
+> Document multi-sessions. **La plus récente est en tête.** Sous le premier `---`,
+> la session fondatrice du 2026-08-27 (Niveau du jour) est conservée intégralement.
+
+---
+
+## Session 2026-08-28 — écran Stats/heatmap, store des pas, barème couleur, barre d'XP premium
+
+**Date :** 2026-08-28 · **Repo :** `/Users/thomas/Documents/dev/molio`
+**Branche :** `feature/mobile-garden-gamification`
+**État git :** **rien de committé cette session** (7 fichiers modifiés, 4 nouveaux ;
+la session du 27 est, elle, dans le commit `193d240`).
+**À lire d'abord :** la section 2026-08-27 ci-dessous + `docs/adr/0001-*`.
+
+Livré cet écran **Stats / heatmap** (calendrier façon GitHub, offline), et posé au
+passage les **deux fondations partagées** que le Classement réutilisera. Puis deux
+passes de **design** demandées par l'utilisateur : la **palette de la heatmap** (verts
+→ floraison chaude) et la **barre d'XP** de l'écran Niveau (capsule premium).
+
+**Tout passe `pnpm --filter mobile type-check` (0) et `lint` (0 erreur ; 14 warnings
+`react-refresh` préexistants, aucun nouveau). Rien vu tourner sur appareil.**
+
+### 1. Store partagé des « pas du jour » — `use-day-history.ts` (nouveau, Zustand + MMKV)
+Le **foyer durable** des pas par jour, que réclamait le handoff avant Stats/Classement.
+- `history: Record<dayKey, steps>` (aujourd'hui inclus), persisté (clé
+  `garden.day.history`). Pattern miroir de `use-auth-store` (`create` +
+  `createSelectors`), `hydrateDayHistory()` appelé au démarrage dans `_layout.tsx`.
+- `dayKey(date)` = `YYYY-MM-DD` en **heure locale** (pas d'ISO UTC → pas de décalage
+  de fuseau), sans `Intl`.
+- **Sème une démo** (`seedDemoHistory`) au 1ᵉʳ lancement si vide : ~16 sem. de **jours
+  passés uniquement** (aujourd'hui laissé aux vrais commits, donc l'anneau Home à 0 et
+  la heatmap ne se contredisent jamais). **Mock** clairement commenté, à supprimer dès
+  qu'une vraie source de pas existe.
+- Câblage : `useBloomLab.commit` appelle `recordDaySteps(target)` (chemin d'écriture
+  unique). ⚠️ **Écart au plan** : `adopt` (scrubber du lab dev) **ne** record **pas**
+  (un scrub de test n'est pas une vraie journée) ; `reset` record `0`.
+
+### 2. Barème couleur partagé — `tierForDay` (`bloom.ts`) + `TierSquares` (nouveau)
+- `tierForDay(steps)` : 5 paliers façon GitHub, adossés aux niveaux — 0 · 1-4 · 5-9 ·
+  10-14 · 15+. **Source unique** heatmap + future tendance du classement.
+- `components/tier-squares.tsx` : primitif présentational pur (grille **colonne-major**,
+  `tier < 0` = cellule transparente). Réutilisé par la heatmap **et** comme **glyphe** du
+  bouton Stats (mini 2×2), et prêt pour la tendance du classement (une ligne).
+
+### 3. Écran Stats — `garden-stats-screen.tsx` (nouveau) + route `/garden-stats`
+Sur le papier crème (`gardenPalettes.light`, comme l'écran Niveau) :
+- Titre « Mon activité », 3 tuiles (**Série** = jours consécutifs actifs jusqu'à
+  aujourd'hui, avec « aujourd'hui en attente » toléré ; **Meilleur jour** ; **Moyenne**
+  des jours actifs).
+- **Heatmap 16 semaines** : colonnes = semaines **lundi→dimanche**, 7 lignes, taille de
+  cellule **dérivée de `useWindowDimensions`** → **aucun scroll horizontal** ; étiquettes
+  de mois (FR), gouttière L/M/V, légende « Moins→Plus ».
+- Lit le store → se rafraîchit après un sync fait sur la Home.
+- Route `app/garden-stats.tsx` + `_layout.tsx` + export dans `index.ts`.
+- **Accès** = petit **bouton mini-heatmap** en haut-droite de la Home ; le `ResetButton`
+  dev est passé en **bas-droite**.
+
+### 4. Design — palette de la heatmap (`palette.ts`) : verts → floraison chaude dès 10 000
+Décision utilisateur après comparaison visuelle. La rampe `tiers` n'est **pas** un simple
+dégradé de verts : elle **bascule dans le chaud au seuil symbolique de 10 000 pas**.
+- LIGHT `tiers`: `['#E7E1D2','#C7DE96','#7CB53C','#F2B23C','#EE7A46']`
+  (terre → vert jeune → vert feuille → **or (10k)** → **corail (15k+)**).
+- DARK renseigné en parallèle. `bloom.ts` documente le seuil chaud sur le tier 3.
+- Raison : vert = « jour actif » (bonne nouvelle) ; le chaud **récompense** les gros jours
+  sans les faire lire comme des alertes rouges. Le corail relie tout (fleur de profil,
+  sommet heatmap, barre d'XP).
+
+### 5. Design — barre d'XP de l'écran Niveau (`garden-level-screen.tsx`) : variante « capsule »
+Refonte premium demandée. Retenu = **capsule ivoire + liseré blanc, remplissage corail**,
+**sans reflet animé** (variante « E » des aperçus).
+- Tokens `xp` (capsule/frame/fillTop/fillBottom/gloss/glow) ajoutés à `GardenPalette`
+  (light + dark).
+- `XpBar` refait : cadre ivoire + liseré blanc + ombre douce ; remplissage en **dégradé
+  vertical via `react-native-svg`** (déjà dépendance, **rien d'ajouté**) ; **reflet blanc**
+  sur l'arête ; **lueur corail** (`boxShadow`, supporté RN 0.81). Capsule 18 px, `padding`
+  qui recesse le remplissage.
+- **Détail** : au niveau max, le haut du dégradé vire au **doré** (`palette.tiers[3]`) —
+  écho de la floraison heatmap.
+
+### Aperçus (artifacts de design, pour mémoire)
+- Palettes heatmap : https://claude.ai/code/artifact/2953d479-fdd6-441f-a11a-a864de822222
+- Barres d'XP : https://claude.ai/code/artifact/73667437-612f-4ec7-bddb-7379efcf6c8a
+
+### Fichiers de la session
+Nouveaux : `use-day-history.ts`, `components/tier-squares.tsx`,
+`garden-stats-screen.tsx`, `app/garden-stats.tsx`.
+Modifiés : `bloom.ts` (tierForDay + doc seuil chaud), `palette.ts` (tiers + xp),
+`use-bloom-lab.ts` (record dans commit/reset ; adopt non ; extraction `nextFakeDelta`),
+`garden-home-screen.tsx` (StatsButton, Reset en bas, extraction du hook `useSyncPhase`),
+`garden-level-screen.tsx` (XpBar capsule + SVG), `index.ts`,
+`app/_layout.tsx` (route + `hydrateDayHistory`).
+NB : les extractions `nextFakeDelta` (use-bloom-lab) et `useSyncPhase`
+(garden-home-screen) ont été faites **uniquement** pour repasser sous la limite
+`max-lines-per-function` (110) après ajout de code — comportement inchangé.
+
+### Décisions utilisateur — ne pas relitiger
+- **Stats en premier** (offline, pose les fondations) ; Classement ensuite.
+- Heatmap = **fenêtre 16 semaines** qui tient sans scroll ; accès = **bouton Home**.
+- Barème = **verts jusqu'à 10 000 pas puis floraison chaude** (or→corail), pas un simple
+  dégradé de verts.
+- Barre d'XP = **capsule ivoire + corail, sans reflet animé** (variante E).
+
+### À faire ensuite
+1. **Écran Classement social** — le gros morceau (backend Effect, comptes, vie privée).
+   Commencer en **fausses données** ; avatars = `FlowerAvatar`, tendance = `TierSquares`
+   en ligne, couleurs = `tierForDay`/`palette.tiers`.
+2. **Cohérence des accents** (à trancher sur device) : la barre d'XP est corail mais le
+   **badge de niveau et le halo de level-up restent verts**. Option proposée : passer le
+   **halo** de level-up en corail (badge vert = identité du rang). Non fait, en attente.
+3. **Liseré blanc** de la barre : volontairement discret sur crème ; à épaissir/ombrer si
+   trop subtil sur device.
+4. Migrer éventuellement `committedSteps`/`lastSeenSteps` **entièrement** dans le store.
+5. Toujours valable : brancher le vrai `ProgressSummary`/`DayProgress`, source de pas
+   réelle ; amender l'ADR (découplage compteur/jardin, revirement pull-loader).
+
+### À juger sur appareil (rien vu tourner)
+Contraste des 5 verts + or/corail sur le crème ; proportions/lisibilité de la heatmap
+(16 colonnes) ; cohérence Home↔heatmap sur « aujourd'hui » après un sync ; rendu de la
+barre capsule (dégradé SVG, lueur `boxShadow`, doré au max) ; discrétion du liseré blanc ;
+accents corail vs verts (point 2 ci-dessus).
+
+---
+
+## Session 2026-08-27 — fondations gamification + écran Niveau du jour
 
 **Date :** 2026-08-27 · **Repo :** `/Users/thomas/Documents/dev/molio` (rien de committé)
 **Session précédente :** `docs/handoff/handoff-molio-garden-20260827.md`

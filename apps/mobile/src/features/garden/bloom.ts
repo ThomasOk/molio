@@ -42,6 +42,43 @@ export const STEPS_PER_LEVEL = 1000;
 export const MAX_LEVEL = MAX_STEPS / STEPS_PER_LEVEL;
 
 /**
+ * The heatmap tier scale — a day's steps folded into one of five buckets, the
+ * way a contributions calendar shades a cell. Deliberately coarse (5, GitHub's
+ * count) so a grid of them reads at a glance, and pinned to the level scale so it
+ * says the same thing the level screen does:
+ *
+ *   0 → no steps (an unlit cell) · 1 → levels 1-4 · 2 → 5-9 · 3 → 10-14 · 4 → 15+
+ *
+ * Tier 3 starts at 10 000 — the day's symbolic target — which is where the
+ * `palette.tiers` ramp deliberately blooms from green into a warm gold/coral: the
+ * threshold is meant to feel like a reward, so the colour changes character there,
+ * not just deepens. The single source for "what kind of day is this", shared by
+ * the stats heatmap now and the leaderboard trend later.
+ */
+export const TIER_THRESHOLDS = [1, 5000, 10000, 15000] as const;
+
+/** The number of tiers, including the empty one — the length of `palette.tiers`. */
+export const TIER_COUNT = TIER_THRESHOLDS.length + 1;
+
+/**
+ * Steps → tier (0-4). A worklet, so an animated square could recolour every
+ * frame, and explicit comparisons rather than a loop over TIER_THRESHOLDS — same
+ * reasoning as `bandIndexFor`. Keep the edges in step with TIER_THRESHOLDS.
+ */
+export function tierForDay(steps: number): number {
+  'worklet';
+  if (steps < 1)
+    return 0;
+  if (steps < 5000)
+    return 1;
+  if (steps < 10000)
+    return 2;
+  if (steps < 15000)
+    return 3;
+  return 4;
+}
+
+/**
  * The palier at which the base garden is fully in flower — deliberately early,
  * under a third of the way in, so the flowers show up quickly rather than being
  * rationed out toward the goal. Past it the base is done and only the density

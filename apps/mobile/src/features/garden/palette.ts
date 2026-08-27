@@ -48,6 +48,15 @@ export type GardenPalette = {
   ringTrack: string;
   ringDone: string;
   /**
+   * The heatmap ramp, indexed by tier (see `tierForDay`): [empty, 1, 2, 3, 4].
+   * Index 0 is an unlit cell on the paper; 1-2 climb through the garden greens,
+   * then the ramp BLOOMS warm at 10 000 steps — the symbolic day's-target — with
+   * gold (tier 3) giving way to a coral flower at the top (tier 4). Green means
+   * "active", the warm break rewards the big days. Shared by the stats heatmap
+   * and the future leaderboard trend.
+   */
+  tiers: readonly [string, string, string, string, string];
+  /**
    * The sync interaction's tint — pull-to-sync charge and the working sweep.
    *
    * The garden's own ink, never a foreign hue: the effect is glass, not colour.
@@ -81,6 +90,7 @@ const LIGHT: GardenPalette = {
   ring: '#3E6B47',
   ringTrack: '#E4DFD1',
   ringDone: '#7AB22C',
+  tiers: ['#E7E1D2', '#C7DE96', '#7CB53C', '#F2B23C', '#EE7A46'],
   ringSync: '#9E5F46',
   haze: '#9DBE72',
   grassBack: '#A8C583',
@@ -122,6 +132,7 @@ const DARK: GardenPalette = {
   ring: '#4E8A5A',
   ringTrack: '#1C2620',
   ringDone: '#9BD24E',
+  tiers: ['#1C2620', '#31502A', '#4F7E2C', '#C6942F', '#C96A4C'],
   ringSync: '#BD7D64',
   haze: '#24402C',
   grassBack: '#223A29',

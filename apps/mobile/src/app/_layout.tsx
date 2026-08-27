@@ -12,6 +12,7 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { Toaster } from 'sonner-native';
 import { useThemeConfig } from '@/components/ui/use-theme-config';
 import { hydrateAuth } from '@/features/auth/use-auth-store';
+import { hydrateDayHistory } from '@/features/garden/use-day-history';
 
 import { APIProvider } from '@/lib/api';
 import { loadSelectedTheme } from '@/lib/hooks/use-selected-theme';
@@ -27,6 +28,7 @@ export const unstable_settings = {
 };
 
 hydrateAuth();
+hydrateDayHistory();
 loadSelectedTheme();
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -71,6 +73,7 @@ export default function RootLayout() {
         <Stack.Screen name="garden" options={{ headerShown: false }} />
         <Stack.Screen name="garden-lab" options={{ headerShown: false }} />
         <Stack.Screen name="garden-level" options={{ headerShown: false }} />
+        <Stack.Screen name="garden-stats" options={{ headerShown: false }} />
       </Stack>
     </Providers>
   );
