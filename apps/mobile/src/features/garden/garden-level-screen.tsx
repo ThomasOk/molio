@@ -16,6 +16,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Defs, Rect, Stop, LinearGradient as SvgLinearGradient } from 'react-native-svg';
 import { scheduleOnRN } from 'react-native-worklets';
 import { toast } from 'sonner-native';
 
@@ -218,8 +219,13 @@ function Portrait({
 }
 
 /**
- * The XP bar. Its fill is the fraction into the CURRENT level, so it resets to
- * empty as each level ticks past; at the very top it reads full, not empty.
+ * The XP bar — an ivory capsule cradling a warm coral fill (see `palette.xp`).
+ *
+ * The fill is the fraction into the CURRENT level, so it empties as each level
+ * ticks past; at the top it reads full, its gradient crowned gold to echo the
+ * heatmap's bloom. A real gradient (via react-native-svg — no extra dependency)
+ * plus a white specular strip and a soft glow give it depth the old flat bar
+ * lacked. The capsule padding is what recesses the fill inside its bezel.
  */
 function XpBar({
   filled,
@@ -230,6 +236,7 @@ function XpBar({
   atMax: boolean;
   palette: GardenPalette;
 }) {
+  const { xp } = palette;
   const barStyle = useAnimatedStyle(() => {
     const within = (filled.get() % STEPS_PER_LEVEL) / STEPS_PER_LEVEL;
     const done = filled.get() >= MAX_STEPS;
@@ -237,10 +244,19 @@ function XpBar({
   });
 
   return (
-    <View style={[styles.track, { backgroundColor: palette.ringTrack }]}>
-      <Animated.View
-        style={[styles.fill, { backgroundColor: atMax ? palette.ringDone : palette.ring }, barStyle]}
-      />
+    <View style={[styles.capsule, { backgroundColor: xp.capsule, borderColor: xp.frame }]}>
+      <Animated.View style={[styles.fill, { boxShadow: `0px 0px 8px ${xp.glow}` }, barStyle]}>
+        <Svg style={StyleSheet.absoluteFill}>
+          <Defs>
+            <SvgLinearGradient id="xpFill" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={atMax ? palette.tiers[3] : xp.fillTop} />
+              <Stop offset="1" stopColor={xp.fillBottom} />
+            </SvgLinearGradient>
+          </Defs>
+          <Rect width="100%" height="100%" fill="url(#xpFill)" />
+        </Svg>
+        <View pointerEvents="none" style={[styles.gloss, { backgroundColor: xp.gloss }]} />
+      </Animated.View>
     </View>
   );
 }
@@ -317,16 +333,27 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     textAlign: 'center',
   },
-  track: {
+  capsule: {
     marginTop: 20,
     alignSelf: 'stretch',
-    height: 10,
-    borderRadius: 5,
-    overflow: 'hidden',
+    height: 18,
+    borderRadius: 999,
+    borderWidth: 2,
+    padding: 2.5,
+    boxShadow: '0px 1px 3px rgba(120, 96, 60, 0.18)',
   },
   fill: {
     height: '100%',
-    borderRadius: 5,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  gloss: {
+    position: 'absolute',
+    top: 1,
+    left: 2,
+    right: 2,
+    height: '44%',
+    borderRadius: 999,
   },
   fraction: {
     marginTop: 8,
