@@ -5,6 +5,112 @@
 
 ---
 
+## Session 2026-08-29 — portrait fleur (coquelicot aquarelle), refonte écran Stats (heatmap annuelle), rampe de paliers « B », **tout committé sur `main`**
+
+**Date :** 2026-08-29 (travail étalé 08-28 → 08-29) · **Repo :** `/Users/thomas/Documents/dev/molio`
+**Branche :** `main` · **État git :** **TOUT est committé et mergé** — PR **#8** (`feature/mobile-garden-profile-stats-polish`)
+mergée sur `main` (merge commit `026c274`). Ce commit a aussi **absorbé la session 2026-08-28 (2)**
+ci-dessous, qui traînait non committée dans l'arbre. Le point n°1 « Committer » des handoffs précédents
+est donc **réglé** ; `.scratch/` est bien gitignoré (ligne 24), il n'a jamais été un préalable au commit.
+**À lire d'abord :** la session 2026-08-28 (1) (heatmap 16 sem., palette `tiers`, barre d'XP) — cette session
+**refond** la heatmap et la rampe `tiers`.
+
+Session de **design sur maquette** : on a remplacé le portrait SVG par une **vraie fleur aquarelle**, refondu
+l'**écran Stats** en calendrier **annuel scrollable**, et retravaillé la **rampe de couleurs des paliers**
+(décision prise après un aperçu comparatif). Plus du **polish** Home/Niveau.
+
+**Tout passe `pnpm --filter mobile type-check` (0) et `lint` (0 erreur ; 14 warnings `react-refresh`
+préexistants, aucun nouveau). Rien vu tourner sur appareil cette session** (l'aperçu des rampes a été jugé
+sur artifact web, pas dans l'app).
+
+### 1. Portrait = coquelicot aquarelle raster (remplace la fleur SVG)
+Le bouton d'accès à l'écran Niveau (Home, haut-gauche) et le grand portrait de l'écran Niveau montrent
+désormais une **fleur peinte** dans le style des `frame-XX.jpg`, pas le vecteur.
+- **Génération externe** : je ne peux pas produire d'image ; j'ai fourni un **prompt** calé sur le style
+  (coquelicot, papier crème), l'utilisateur a généré et déposé le PNG. Asset :
+  `assets/profile-poppy.png` (1254×1254).
+- **Nouveau `components/profile-flower.tsx`** : rend le raster dans un disque (même liseré que le vecteur),
+  avec un **léger cadrage** (`ZOOM = 1.25`, `RISE = 0.06`) pour centrer la corolle et sortir la tige du rond.
+  **Repli automatique** sur `FlowerAvatar` (vecteur) si `PROFILE.avatar == null` — le vecteur reste la
+  brique recolorable du **futur classement**.
+- `profile.ts` : nouveau champ **`avatar`** (`require('./assets/profile-poppy.png')`).
+- `FlowerAvatar` : nouvelle prop **`disc`** (défaut `true`) pour dessiner une fleur **sans le disque** —
+  utilisée comme petit brin rouge à côté du titre « Mon activité ».
+- ⚠️ `PROFILE.flower` vaut toujours **`'coral'`** (teinte du vecteur de repli / classement) ; à passer à
+  `'red'` si on veut aligner le repli sur le coquelicot. Non fait (à trancher sur device).
+
+### 2. Écran Stats refondu — heatmap **annuelle scrollable** (`garden-stats-screen.tsx` réécrit)
+D'après une maquette fournie. Sur le crème, **sans cartes** (tout posé sur le papier) :
+- **2 stats seulement** : « jours de série » et « meilleur jour » (la **moyenne a sauté**), grands chiffres
+  verts centrés séparés d'un fin trait vertical.
+- **Titre** « Mon activité » + petit **coquelicot rouge libre** (`FlowerAvatar … disc={false}`).
+- **Grille = année civile entière**, **scrollable horizontalement** : une colonne par semaine du 1ᵉʳ janvier
+  au 31 décembre, 7 lignes **L M M J V S D** (gouttière **figée** hors du scroll), libellés de mois courts
+  (`jan fév…`) **épinglés par le jeudi** de chaque semaine (convention ISO → pas de « déc. » parasite de
+  l'année précédente). **S'ouvre sur les semaines récentes** (aujourd'hui près du bord droit) via
+  `contentOffset`. Année « 2026 » au-dessus, hint « ← Glissez pour explorer l'année → » dessous.
+- **Cellules** : taille fixe `CELL = 14`, gap **resserré `CELL_GAP = 2`** (serré mais non collé),
+  rayon **3** (`CELL/5`). Tout (gouttière, position des mois, scroll) dérive de ces consts.
+- **Légende = une seule ligne centrée** de la rampe `tiers` (du vide au corail), **sans libellés** — on a
+  d'abord essayé une liste « minimum de pas » mais elle a été abandonnée (le 1ᵉʳ palier actif affichait un
+  « 1 » disgracieux). Mêmes cases resserrées (gap 4) et même rayon (3) que la grille.
+
+### 3. Seed démo → **année entière** + clé bumpée (`use-day-history.ts`)
+- `seedDemoHistory` remplit maintenant **du 1ᵉʳ janvier à hier** (jours passés uniquement ; aujourd'hui
+  laissé aux vrais syncs), pour que la grille annuelle ait de la matière. Toujours un **mock** assumé.
+- Clé de stockage **`garden.day.history` → `garden.day.history.v2`** : force l'ancien seed 16 semaines à
+  céder la place au prochain lancement (aucun vrai utilisateur, aucune perte réelle).
+
+### 4. Design — rampe de paliers **variante « B »** (`palette.ts`, light + dark)
+Décision utilisateur après **aperçu comparatif** (artifact :
+https://claude.ai/code/artifact/aafd6aef-d55f-480a-b354-cc7d8b452eeb — Actuelle vs A « tout vert » vs B).
+- **Problème de l'ancienne rampe** : l'or (tier 3) était **plus clair** que le vert (tier 2) → l'échelle
+  redescendait en luminosité au milieu, et le corail lisait « alerte ».
+- **B retenue** : des **verts qui foncent** palier par palier, **corail foncé seulement au sommet**, en
+  gardant l'ordre par luminosité (le pic chaud reste plus sombre que le vert d'avant).
+  - LIGHT `tiers` : `['#E7E1D2','#CBE4A2','#8FC24A','#4F8E2E','#C0492E']`
+  - DARK `tiers` : `['#26302A','#33552B','#4F8A2C','#77BE3C','#DE6B48']` (sur fond sombre la rampe
+    s'éclaircit, corail chaud au sommet). Doc du token `tiers` réécrite.
+- **Seuils inchangés** : `tierForDay` reste à **5 paliers** (`TIER_THRESHOLDS = [1, 5000, 10000, 15000]`,
+  virage à 10k/15k). Le **vert le plus foncé = tier 3 = 10 000–14 999 pas** ; 15 000+ = corail.
+
+### 5. Polish Home + Niveau
+- **Home** (`garden-home-screen.tsx`) : anneau `size` **224 → 208**, compteur (`animated-steps.tsx`)
+  `fontSize` **44 → 40** / `lineHeight` **50 → 46**, bloc anneau **descendu** (`paddingTop` `insets.top+40`
+  **→ +64**). Loader de pull (`pull-loader.tsx`) : `RING` **26 → 22**.
+- **Niveau** (`garden-level-screen.tsx`) : le **badge de niveau reste un cercle parfait** à 2 chiffres —
+  `minWidth`/`paddingHorizontal` remplacés par une **largeur fixe** `width: 34` (« 20 » tient dans 28 px).
+
+### Fichiers de la session
+Nouveaux : `components/profile-flower.tsx`, `assets/profile-poppy.png`.
+Modifiés : `flower-avatar.tsx` (prop `disc`), `profile.ts` (`avatar`), `garden-stats-screen.tsx` (réécrit),
+`palette.ts` (rampe B + doc), `use-day-history.ts` (seed annuel + clé v2),
+`garden-home-screen.tsx` (anneau/compteur/loader + `ProfileFlower`), `garden-level-screen.tsx`
+(badge cercle + `ProfileFlower`), `animated-steps.tsx`, `pull-loader.tsx`.
+
+### Décisions utilisateur — ne pas relitiger
+- **Portrait = coquelicot aquarelle raster** ; vecteur `FlowerAvatar` gardé en repli / pour le classement.
+- **Rampe de paliers = variante B** (verts foncés → corail au sommet, ordonnée par luminosité), **pas** l'or
+  au milieu. **5 seuils conservés.**
+- **Stats = 2 chiffres** (série + meilleur jour), **grille annuelle scrollable**, **légende = rampe centrée
+  sans libellés**, tout sur le crème sans cartes.
+- **Cellules serrées mais non collées** (gap 2), rayon 3, cohérent grille ↔ légende.
+- **Tout committé sur `main`** ; l'utilisateur délègue push/PR/merge.
+
+### À faire ensuite
+1. **Écran Classement social** en **fausses données** — le prochain gros morceau (avatars = `FlowerAvatar`,
+   tendance = `TierSquares` en ligne, couleurs = la nouvelle rampe `tiers`/`tierForDay`).
+2. Retirer les **outils dev** (`+10 000`, `Réinitialiser`) quand la vraie source de pas arrivera.
+3. Aligner éventuellement `PROFILE.flower` → `'red'` (repli vecteur cohérent avec le coquelicot).
+4. Le seed démo et la clé `…v2` sont des **mocks** à supprimer avec la vraie source de pas.
+
+### À juger sur appareil (rien vu tourner cette session)
+Cadrage du coquelicot dans le rond (`ZOOM`/`RISE`) ; densité de la grille **annuelle** et lisibilité du
+**corail foncé au sommet** dans un champ dense ; le scroll initial (aujourd'hui à droite) ; cellules
+resserrées (gap 2) + rayon 3 ; nouvelles tailles anneau/compteur/loader ; badge de niveau rond à 2 chiffres.
+
+---
+
 ## Session 2026-08-28 (2) — barre d'XP variante B, animations premium, badge notif, outil dev +10 000
 
 **Date :** 2026-08-28 · **Repo :** `/Users/thomas/Documents/dev/molio`
