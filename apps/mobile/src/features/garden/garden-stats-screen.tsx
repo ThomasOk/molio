@@ -7,59 +7,58 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { strideFonts } from '@/lib/theme';
 import { formatSteps, tierForDay } from './bloom';
+import { FlowerAvatar } from './components/flower-avatar';
 import { TierSquares } from './components/tier-squares';
 import { GARDEN_PAPER, gardenPalettes } from './palette';
 import { dayKey, useDayHistory } from './use-day-history';
 
-/** The heatmap window: 16 week-columns, 7 day-rows, weeks starting Monday (FR). */
-const WEEKS = 16;
+/** The grid spans a whole calendar year: week-columns × 7 day-rows, Monday-first. */
 const ROWS = 7;
-const CELL_GAP = 4;
-const CELL_MAX = 18;
-const CELL_MIN = 10;
-/** Left gutter for the weekday letters, sized to the single-letter labels. */
-const GUTTER = 16;
-/** Horizontal breathing room the card takes out of the screen before the grid. */
-const CARD_PADDING = 16;
+const CELL = 14;
+const CELL_GAP = 2;
+const CELL_STEP = CELL + CELL_GAP;
+/** Left gutter for the weekday letters, held out of the horizontal scroll. */
+const GUTTER = 18;
 const SCREEN_PADDING = 20;
+/** Height reserved above the grid for the month labels. */
+const MONTH_ROW_H = 16;
+const MONTH_ROW_MB = 6;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
-const MONTHS = [
-  'janv.',
-  'févr.',
-  'mars',
-  'avr.',
+/** Short month names (FR), matching the mock's "jan fév mar…". */
+const MONTHS_SHORT = [
+  'jan',
+  'fév',
+  'mar',
+  'avr',
   'mai',
   'juin',
-  'juil.',
+  'juil',
   'août',
-  'sept.',
-  'oct.',
-  'nov.',
-  'déc.',
+  'sep',
+  'oct',
+  'nov',
+  'déc',
 ];
-/** Row order is Monday → Sunday; label Mon/Wed/Fri, blank the rest (GitHub-style). */
+/** Monday → Sunday, every day labelled (L M M J V S D). */
 const WEEKDAYS = [
   { id: 'mon', letter: 'L' },
-  { id: 'tue', letter: '' },
+  { id: 'tue', letter: 'M' },
   { id: 'wed', letter: 'M' },
-  { id: 'thu', letter: '' },
+  { id: 'thu', letter: 'J' },
   { id: 'fri', letter: 'V' },
-  { id: 'sat', letter: '' },
-  { id: 'sun', letter: '' },
+  { id: 'sat', letter: 'S' },
+  { id: 'sun', letter: 'D' },
 ];
 
-function clampNum(value: number, low: number, high: number): number {
-  return Math.min(Math.max(value, low), high);
-}
-
-/** A date `days` before `from`, at local midnight arithmetic. */
+/** A date `days` from `from`, at local midnight arithmetic. */
 function shiftDays(from: Date, days: number): Date {
   const d = new Date(from);
   d.setDate(d.getDate() + days);
   return d;
 }
 
-/** The Monday on or before `date` (getDay: 0=Sun…6=Sat). */
+/** The Monday on or before `date` (getDay: 0=Sun…6=Sat), at local midnight. */
 function mondayOf(date: Date): Date {
   const since = (date.getDay() + 6) % 7;
   const m = shiftDays(date, -since);
@@ -67,67 +66,85 @@ function mondayOf(date: Date): Date {
   return m;
 }
 
+function startOfDay(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 type Grid = {
   /** Tier per cell, COLUMN-MAJOR (index c*ROWS + r) — TierSquares' order. */
   tiers: number[];
   /** Month labels to place above the grid: the column and its name. */
   monthLabels: { column: number; label: string; key: string }[];
+  columns: number;
 };
 
 type Stats = {
   streak: number;
   best: number;
-  average: number;
 };
 
-/** Build the 16×7 tier grid and the per-column month labels from the history. */
-function buildGrid(history: Record<string, number>, today: Date): Grid {
-  const start = shiftDays(mondayOf(today), -(WEEKS - 1) * 7);
+/**
+ * Build the full-year tier grid (column per week) and its month labels.
+ *
+ * Columns run from the Monday on/before Jan 1st to the week holding Dec 31st.
+ * Cells outside the year (leading/trailing days of the boundary weeks) and future
+ * days hold their place but stay unpainted (tier -1). Months are pinned by each
+ * week's Thursday — the ISO convention — so a boundary week lands its label in the
+ * month it mostly belongs to, never on a stray December from the previous year.
+ */
+function buildYearGrid(history: Record<string, number>, today: Date): Grid {
+  const year = today.getFullYear();
+  const yearStart = mondayOf(new Date(year, 0, 1));
+  const lastMonday = mondayOf(new Date(year, 11, 31));
+  const columns = Math.round((lastMonday.getTime() - yearStart.getTime()) / (7 * DAY_MS)) + 1;
+  const jan1 = new Date(year, 0, 1).getTime();
+  const dec31 = startOfDay(new Date(year, 11, 31)).getTime();
+  const todayMs = startOfDay(today).getTime();
+
   const tiers: number[] = [];
   const monthLabels: Grid['monthLabels'] = [];
   let prevMonth = -1;
 
-  for (let c = 0; c < WEEKS; c += 1) {
-    const columnStart = shiftDays(start, c * 7);
-    const columnMonth = columnStart.getMonth();
-    // A label only where the month first appears — its column pins its x.
-    if (columnMonth !== prevMonth)
-      monthLabels.push({ column: c, label: MONTHS[columnMonth], key: dayKey(columnStart) });
-    prevMonth = columnMonth;
+  for (let c = 0; c < columns; c += 1) {
+    // The week's Thursday decides which month owns this column.
+    const thursday = shiftDays(yearStart, c * 7 + 3);
+    if (thursday.getFullYear() === year && thursday.getMonth() !== prevMonth) {
+      monthLabels.push({ column: c, label: MONTHS_SHORT[thursday.getMonth()], key: `m${thursday.getMonth()}` });
+      prevMonth = thursday.getMonth();
+    }
 
     for (let r = 0; r < ROWS; r += 1) {
-      const date = shiftDays(start, c * 7 + r);
-      // Future days (this week's tail) hold their place but stay unpainted.
+      const date = shiftDays(yearStart, c * 7 + r);
+      const ms = date.getTime();
       tiers[c * ROWS + r]
-        = date > today ? -1 : tierForDay(history[dayKey(date)] ?? 0);
+        = ms < jan1 || ms > dec31 || ms > todayMs
+          ? -1
+          : tierForDay(history[dayKey(date)] ?? 0);
     }
   }
 
-  return { tiers, monthLabels };
+  return { tiers, monthLabels, columns };
 }
 
 /**
- * Streak, best day and average over the window.
+ * Streak and best day over the year.
  *
  * The streak counts back from today, but lets today be "pending": if today has
  * no steps yet (common — you sync later in the day), it starts from yesterday so
- * the number reflects the run you're on, not a zero you haven't filled. Average
- * is over ACTIVE days only, so rest days don't drag a real habit down to nothing.
+ * the number reflects the run you're on, not a zero you haven't filled.
  */
 function buildStats(history: Record<string, number>, today: Date): Stats {
-  const start = shiftDays(mondayOf(today), -(WEEKS - 1) * 7);
-  let best = 0;
-  let sum = 0;
-  let active = 0;
+  const year = today.getFullYear();
+  const yearStart = new Date(year, 0, 1);
+  const todayMs = startOfDay(today).getTime();
 
-  for (let i = 0; i < WEEKS * ROWS; i += 1) {
-    const steps = history[dayKey(shiftDays(start, i))] ?? 0;
-    if (steps >= 1) {
-      active += 1;
-      sum += steps;
-      if (steps > best)
-        best = steps;
-    }
+  let best = 0;
+  for (let d = new Date(yearStart); d.getTime() <= todayMs; d.setDate(d.getDate() + 1)) {
+    const steps = history[dayKey(d)] ?? 0;
+    if (steps > best)
+      best = steps;
   }
 
   const stepsOn = (offset: number) => history[dayKey(shiftDays(today, offset))] ?? 0;
@@ -138,16 +155,17 @@ function buildStats(history: Record<string, number>, today: Date): Stats {
     offset -= 1;
   }
 
-  return { streak, best, average: active > 0 ? Math.round(sum / active) : 0 };
+  return { streak, best };
 }
 
 /**
- * Stats screen — the day's steps as a contributions calendar.
+ * Stats screen — the year's steps as a contributions calendar.
  *
- * A 16-week heatmap on the garden's paper, in the shared tier greens, plus three
- * summary tiles. Reads the day-history store, so a sync done on the home screen
- * shows up here on the next visit. Offline; no real step source yet, so the grid
- * is seeded with demo history (past days only — today tracks real syncs).
+ * A full-year heatmap on the garden's paper, scrolled horizontally, in the shared
+ * tier colours, plus the streak and best day. Reads the day-history store, so a
+ * sync done on the home screen shows up here on the next visit. Offline; no real
+ * step source yet, so the grid is seeded with demo history (past days only — today
+ * tracks real syncs).
  */
 export function GardenStatsScreen() {
   const palette = gardenPalettes.light;
@@ -158,18 +176,19 @@ export function GardenStatsScreen() {
   // Recompute only when the history or width changes — not every render. `today`
   // is captured per computation; the screen is short-lived enough not to need a
   // midnight rollover watcher.
-  const { grid, stats, cell } = React.useMemo(() => {
+  const { grid, stats, year, scrollX } = React.useMemo(() => {
     const today = new Date();
-    const inner = width - SCREEN_PADDING * 2 - CARD_PADDING * 2 - GUTTER;
-    const size = clampNum(
-      Math.floor((inner - (WEEKS - 1) * CELL_GAP) / WEEKS),
-      CELL_MIN,
-      CELL_MAX,
-    );
+    const yearStart = mondayOf(new Date(today.getFullYear(), 0, 1));
+    const g = buildYearGrid(history, today);
+    // Open the grid on the recent weeks (today near the right edge); the user
+    // scrolls left to explore earlier in the year.
+    const todayCol = Math.floor((startOfDay(today).getTime() - yearStart.getTime()) / (7 * DAY_MS));
+    const visibleGrid = width - SCREEN_PADDING * 2 - GUTTER;
     return {
-      grid: buildGrid(history, today),
+      grid: g,
       stats: buildStats(history, today),
-      cell: size,
+      year: today.getFullYear(),
+      scrollX: Math.max(0, (todayCol + 1) * CELL_STEP - visibleGrid),
     };
   }, [history, width]);
 
@@ -186,42 +205,61 @@ export function GardenStatsScreen() {
         }}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={[styles.title, { color: palette.ink }]}>Mon activité</Text>
-
-        <View style={styles.tiles}>
-          <StatTile label="Série" value={String(stats.streak)} unit="jours" palette={palette} />
-          <StatTile label="Meilleur jour" value={formatSteps(stats.best)} unit="pas" palette={palette} />
-          <StatTile label="Moyenne" value={formatSteps(stats.average)} unit="pas/j" palette={palette} />
+        <View style={styles.titleRow}>
+          <Text style={[styles.title, { color: palette.ink }]}>Mon activité</Text>
+          <FlowerAvatar hue="red" size={22} palette={palette} disc={false} />
         </View>
 
-        <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.cardBorder }]}>
-          <Text style={[styles.cardTitle, { color: palette.inkSoft }]}>
-            16 dernières semaines
-          </Text>
+        <View style={styles.stats}>
+          <StatBlock value={String(stats.streak)} label="jours de série" palette={palette} />
+          <View style={[styles.statDivider, { backgroundColor: palette.cardBorder }]} />
+          <StatBlock value={formatSteps(stats.best)} label="meilleur jour" palette={palette} />
+        </View>
 
-          <MonthLabels labels={grid.monthLabels} cell={cell} palette={palette} />
+        <Text style={[styles.year, { color: palette.inkSoft }]}>{year}</Text>
 
-          <View style={{ flexDirection: 'row', gap: CELL_GAP }}>
-            <View style={{ width: GUTTER - CELL_GAP, gap: CELL_GAP }}>
+        <View style={styles.gridRow}>
+          {/* Fixed weekday gutter — stays put while the grid scrolls under it. */}
+          <View style={{ width: GUTTER }}>
+            <View style={{ height: MONTH_ROW_H + MONTH_ROW_MB }} />
+            <View style={{ gap: CELL_GAP }}>
               {WEEKDAYS.map(day => (
-                <View key={day.id} style={{ height: cell, justifyContent: 'center' }}>
+                <View key={day.id} style={{ height: CELL, justifyContent: 'center' }}>
                   <Text style={[styles.weekday, { color: palette.label }]}>{day.letter}</Text>
                 </View>
               ))}
             </View>
-
-            <TierSquares
-              tiers={grid.tiers}
-              columns={WEEKS}
-              rows={ROWS}
-              size={cell}
-              gap={CELL_GAP}
-              radius={Math.max(2, Math.round(cell / 5))}
-              palette={palette}
-            />
           </View>
 
-          <Legend palette={palette} />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentOffset={{ x: scrollX, y: 0 }}
+          >
+            <View>
+              <MonthLabels labels={grid.monthLabels} palette={palette} />
+              <TierSquares
+                tiers={grid.tiers}
+                columns={grid.columns}
+                rows={ROWS}
+                size={CELL}
+                gap={CELL_GAP}
+                radius={Math.max(2, Math.round(CELL / 5))}
+                palette={palette}
+              />
+            </View>
+          </ScrollView>
+        </View>
+
+        <Text style={[styles.hint, { color: palette.label }]}>
+          ← Glissez pour explorer l'année →
+        </Text>
+
+        {/* The tier ramp, smallest → largest, centred — the scale at a glance. */}
+        <View style={styles.legend}>
+          {palette.tiers.map(color => (
+            <View key={color} style={[styles.legendSwatch, { backgroundColor: color }]} />
+          ))}
         </View>
       </ScrollView>
     </View>
@@ -252,25 +290,20 @@ function BackButton({ palette }: { palette: GardenPalette }) {
   );
 }
 
-/** One summary tile — a big number over a quiet label. */
-function StatTile({
-  label,
+/** One summary stat — a big number over a quiet label, centred in its half. */
+function StatBlock({
   value,
-  unit,
+  label,
   palette,
 }: {
-  label: string;
   value: string;
-  unit: string;
+  label: string;
   palette: GardenPalette;
 }) {
   return (
-    <View style={[styles.tile, { backgroundColor: palette.card, borderColor: palette.cardBorder }]}>
-      <View style={styles.tileValueRow}>
-        <Text style={[styles.tileValue, { color: palette.ink }]}>{value}</Text>
-        <Text style={[styles.tileUnit, { color: palette.label }]}>{unit}</Text>
-      </View>
-      <Text style={[styles.tileLabel, { color: palette.inkSoft }]}>{label}</Text>
+    <View style={styles.statBlock}>
+      <Text style={[styles.statValue, { color: palette.ink }]}>{value}</Text>
+      <Text style={[styles.statLabel, { color: palette.label }]}>{label}</Text>
     </View>
   );
 }
@@ -278,37 +311,21 @@ function StatTile({
 /** Month names above the grid, each pinned to the column where its month begins. */
 function MonthLabels({
   labels,
-  cell,
   palette,
 }: {
   labels: { column: number; label: string; key: string }[];
-  cell: number;
   palette: GardenPalette;
 }) {
-  const step = cell + CELL_GAP;
   return (
-    <View style={{ height: 16, marginLeft: GUTTER, marginBottom: 4 }}>
+    <View style={{ height: MONTH_ROW_H, marginBottom: MONTH_ROW_MB }}>
       {labels.map(({ column, label, key }) => (
         <Text
           key={key}
-          style={[styles.month, { color: palette.label, left: column * step }]}
+          style={[styles.month, { color: palette.label, left: column * CELL_STEP }]}
         >
           {label}
         </Text>
       ))}
-    </View>
-  );
-}
-
-/** "Moins ▢▢▢▢▢ Plus" — the tier ramp, so the greens are legible as a scale. */
-function Legend({ palette }: { palette: GardenPalette }) {
-  return (
-    <View style={styles.legend}>
-      <Text style={[styles.legendText, { color: palette.label }]}>Moins</Text>
-      {palette.tiers.map(color => (
-        <View key={color} style={[styles.legendCell, { backgroundColor: color }]} />
-      ))}
-      <Text style={[styles.legendText, { color: palette.label }]}>Plus</Text>
     </View>
   );
 }
@@ -321,56 +338,52 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   title: {
     fontFamily: strideFonts.bold,
     fontSize: 24,
     lineHeight: 30,
   },
-  tiles: {
+  stats: {
     flexDirection: 'row',
-    gap: 10,
-    marginTop: 20,
+    alignItems: 'center',
+    marginTop: 24,
+    marginBottom: 8,
   },
-  tile: {
+  statBlock: {
     flex: 1,
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingVertical: 14,
-    paddingHorizontal: 12,
+    alignItems: 'center',
   },
-  tileValueRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-  },
-  tileValue: {
+  statValue: {
     fontFamily: strideFonts.black,
-    fontSize: 22,
-    lineHeight: 26,
+    fontSize: 30,
+    lineHeight: 36,
     fontVariant: ['tabular-nums'],
   },
-  tileUnit: {
-    marginLeft: 3,
-    fontFamily: strideFonts.medium,
-    fontSize: 11,
-    lineHeight: 14,
-  },
-  tileLabel: {
+  statLabel: {
     marginTop: 4,
     fontFamily: strideFonts.medium,
     fontSize: 12,
     lineHeight: 16,
   },
-  card: {
-    marginTop: 16,
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: CARD_PADDING,
+  statDivider: {
+    width: StyleSheet.hairlineWidth,
+    alignSelf: 'stretch',
+    marginVertical: 6,
   },
-  cardTitle: {
+  year: {
+    marginTop: 20,
+    marginBottom: 10,
     fontFamily: strideFonts.bold,
     fontSize: 14,
     lineHeight: 18,
-    marginBottom: 14,
+  },
+  gridRow: {
+    flexDirection: 'row',
   },
   weekday: {
     fontFamily: strideFonts.medium,
@@ -385,21 +398,22 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 14,
   },
-  legend: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 16,
-  },
-  legendText: {
+  hint: {
+    marginTop: 12,
     fontFamily: strideFonts.medium,
     fontSize: 11,
     lineHeight: 14,
-    marginHorizontal: 2,
+    textAlign: 'center',
   },
-  legendCell: {
-    width: 11,
-    height: 11,
-    borderRadius: 2,
+  legend: {
+    marginTop: 24,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  legendSwatch: {
+    width: 18,
+    height: 18,
+    borderRadius: 3,
   },
 });

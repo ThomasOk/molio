@@ -4,7 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as React from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedProps,
@@ -16,14 +16,14 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Defs, Rect, Stop, LinearGradient as SvgLinearGradient } from 'react-native-svg';
+import Svg, { Defs, RadialGradient, Rect, Stop, LinearGradient as SvgLinearGradient } from 'react-native-svg';
 import { scheduleOnRN } from 'react-native-worklets';
 import { toast } from 'sonner-native';
 
 import { strideFonts } from '@/lib/theme';
 import { clamp, formatSteps, MAX_LEVEL, MAX_STEPS, STEPS_PER_LEVEL } from './bloom';
-import { FlowerAvatar } from './components/flower-avatar';
 import { GlassToast } from './components/glass-toast';
+import { ProfileFlower } from './components/profile-flower';
 import { getLastSeenSteps, setLastSeenSteps } from './level-progress';
 import { GARDEN_PAPER, gardenPalettes } from './palette';
 import { PROFILE } from './profile';
@@ -37,6 +37,15 @@ const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
 const REVEAL_MIN_MS = 900;
 const REVEAL_MAX_MS = 2600;
 const AVATAR_SIZE = 132;
+/** The level-up glow reaches well past the portrait so it reads as light, not a disc. */
+const HALO_SIZE = Math.round(AVATAR_SIZE * 1.7);
+
+/** The XP bar's height, and the horizontal padding of the sheet it stretches in. */
+const BAR_HEIGHT = 14;
+const SHEET_PADDING = 40;
+
+/** Strong ease-out (from animations.dev) — the built-in curves lack the punch a pop needs. */
+const EASE_POP = Easing.bezier(0.22, 1, 0.32, 1);
 
 /** The bar decelerates into its final width — a fill that eases to rest. */
 const EASE_FILL = Easing.out(Easing.cubic);
@@ -129,10 +138,13 @@ export function GardenLevelScreen() {
         return;
       scheduleOnRN(setLevel, next);
       if (next > prev && !reduced) {
+        // Snap up fast (strong ease-out), then ease back down — a clean pulse with
+        // no bounce. A mid-settle level cross retargets the timing smoothly rather
+        // than restarting hard, so a multi-level reveal builds instead of stuttering.
         pop.set(
           withSequence(
-            withTiming(1, { duration: 140, easing: Easing.out(Easing.quad) }),
-            withTiming(0, { duration: 340, easing: Easing.inOut(Easing.quad) }),
+            withTiming(1, { duration: 130, easing: EASE_POP }),
+            withTiming(0, { duration: 420, easing: Easing.out(Easing.cubic) }),
           ),
         );
         scheduleOnRN(fireLevelUp);
@@ -196,21 +208,32 @@ function Portrait({
   pop: SharedValue<number>;
   palette: GardenPalette;
 }) {
-  const haloStyle = useAnimatedStyle(() => ({
-    opacity: 0.45 * pop.get(),
-    transform: [{ scale: 1 + 0.35 * pop.get() }],
-  }));
+  const haloStyle = useAnimatedStyle(() => {
+    const p = pop.get();
+    return {
+      opacity: p,
+      transform: [{ scale: 0.92 + 0.16 * p }],
+    };
+  });
   const badgeStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: 1 + 0.18 * pop.get() }],
+    transform: [{ scale: 1 + 0.22 * pop.get() }],
   }));
 
   return (
     <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-      <Animated.View
-        pointerEvents="none"
-        style={[styles.halo, { width: AVATAR_SIZE, height: AVATAR_SIZE, backgroundColor: palette.ringDone }, haloStyle]}
-      />
-      <FlowerAvatar hue={PROFILE.flower} size={AVATAR_SIZE} palette={palette} />
+      <Animated.View pointerEvents="none" style={[styles.halo, { width: HALO_SIZE, height: HALO_SIZE }, haloStyle]}>
+        <Svg width={HALO_SIZE} height={HALO_SIZE}>
+          <Defs>
+            <RadialGradient id="halo" cx="50%" cy="50%" r="50%">
+              <Stop offset="0" stopColor={palette.ringDone} stopOpacity={0.5} />
+              <Stop offset="0.6" stopColor={palette.ringDone} stopOpacity={0.16} />
+              <Stop offset="1" stopColor={palette.ringDone} stopOpacity={0} />
+            </RadialGradient>
+          </Defs>
+          <Rect width={HALO_SIZE} height={HALO_SIZE} fill="url(#halo)" />
+        </Svg>
+      </Animated.View>
+      <ProfileFlower size={AVATAR_SIZE} palette={palette} />
       <Animated.View style={[styles.badge, { backgroundColor: palette.ring, borderColor: GARDEN_PAPER }, badgeStyle]}>
         <Text style={styles.badgeText}>{level}</Text>
       </Animated.View>
@@ -219,13 +242,17 @@ function Portrait({
 }
 
 /**
- * The XP bar — an ivory capsule cradling a warm coral fill (see `palette.xp`).
+ * The XP bar — a warm coral fill sunk into a recessed groove, ringed by a crisp
+ * white bezel (variant "B"; see `palette.xp`).
  *
  * The fill is the fraction into the CURRENT level, so it empties as each level
  * ticks past; at the top it reads full, its gradient crowned gold to echo the
- * heatmap's bloom. A real gradient (via react-native-svg — no extra dependency)
- * plus a white specular strip and a soft glow give it depth the old flat bar
- * lacked. The capsule padding is what recesses the fill inside its bezel.
+ * heatmap's bloom. The groove (track colour + inset shadow) reads hollow where
+ * empty; the fill rides flush inside it — a three-stop coral gradient (via
+ * react-native-svg, no extra dependency) with a white specular crest and a coral
+ * glow that bleeds past the pill, since the groove is left unclipped. The white
+ * bezel is an outer ring (a box-shadow spread, not a padded frame) so the fill
+ * can reach the very edge.
  */
 function XpBar({
   filled,
@@ -237,6 +264,12 @@ function XpBar({
   palette: GardenPalette;
 }) {
   const { xp } = palette;
+  // The gradient is painted onto a fixed-width SVG canvas (the widest the fill can
+  // ever be) and clipped to the current fill by the parent's overflow. react-native-svg
+  // does NOT track an animated parent width — an absoluteFill Svg collapses to a
+  // default size, painting only a stub — so the canvas must be sized in pixels.
+  const { width: windowWidth } = useWindowDimensions();
+  const trackWidth = Math.max(0, windowWidth - SHEET_PADDING * 2);
   const barStyle = useAnimatedStyle(() => {
     const within = (filled.get() % STEPS_PER_LEVEL) / STEPS_PER_LEVEL;
     const done = filled.get() >= MAX_STEPS;
@@ -244,12 +277,21 @@ function XpBar({
   });
 
   return (
-    <View style={[styles.capsule, { backgroundColor: xp.capsule, borderColor: xp.frame }]}>
-      <Animated.View style={[styles.fill, { boxShadow: `0px 0px 8px ${xp.glow}` }, barStyle]}>
-        <Svg style={StyleSheet.absoluteFill}>
+    <View
+      style={[
+        styles.track,
+        {
+          backgroundColor: xp.track,
+          boxShadow: `inset 0px 1.5px 3px ${xp.groove}, 0px 0px 0px 2px ${xp.bezel}`,
+        },
+      ]}
+    >
+      <Animated.View style={[styles.fill, { boxShadow: `0px 0px 10px ${xp.glow}` }, barStyle]}>
+        <Svg width={trackWidth} height={BAR_HEIGHT} style={styles.fillGradient}>
           <Defs>
             <SvgLinearGradient id="xpFill" x1="0" y1="0" x2="0" y2="1">
               <Stop offset="0" stopColor={atMax ? palette.tiers[3] : xp.fillTop} />
+              <Stop offset="0.55" stopColor={xp.fillMid} />
               <Stop offset="1" stopColor={xp.fillBottom} />
             </SvgLinearGradient>
           </Defs>
@@ -306,14 +348,16 @@ const styles = StyleSheet.create({
   },
   halo: {
     position: 'absolute',
-    borderRadius: AVATAR_SIZE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   badge: {
     position: 'absolute',
     bottom: -8,
-    minWidth: 34,
+    // Fixed square + half-width radius so the badge stays a perfect circle
+    // whatever the digit count (levels run 1–20, so "20" is the widest it holds).
+    width: 34,
     height: 34,
-    paddingHorizontal: 8,
     borderRadius: 17,
     borderWidth: 3,
     alignItems: 'center',
@@ -333,26 +377,31 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     textAlign: 'center',
   },
-  capsule: {
+  track: {
     marginTop: 20,
     alignSelf: 'stretch',
-    height: 18,
+    height: BAR_HEIGHT,
     borderRadius: 999,
-    borderWidth: 2,
-    padding: 2.5,
-    boxShadow: '0px 1px 3px rgba(120, 96, 60, 0.18)',
   },
   fill: {
-    height: '100%',
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
     borderRadius: 999,
     overflow: 'hidden',
   },
+  fillGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+  },
   gloss: {
     position: 'absolute',
-    top: 1,
+    top: 1.5,
     left: 2,
     right: 2,
-    height: '44%',
+    height: '40%',
     borderRadius: 999,
   },
   fraction: {

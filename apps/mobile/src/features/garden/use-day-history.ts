@@ -19,10 +19,10 @@ import { clamp, MAX_STEPS } from './bloom';
  * cell tracks live syncs. Days are keyed in LOCAL time (see `dayKey`).
  */
 
-const HISTORY_KEY = 'garden.day.history';
-
-/** How many past weeks the demo seed fills, matching the heatmap window. */
-const SEED_WEEKS = 16;
+// `.v2` retires the old 16-week demo seed so the fuller full-year mock takes its
+// place on next launch. Safe to bump while the data is still a mock — there is no
+// real step source yet. Drop the suffix once a real Health source lands.
+const HISTORY_KEY = 'garden.day.history.v2';
 
 export type DayHistory = Record<string, number>;
 
@@ -48,46 +48,43 @@ export function dayKey(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-/** A date `days` before `from` (local midnight arithmetic, DST-safe enough here). */
-function daysAgo(from: Date, days: number): Date {
-  const d = new Date(from);
-  d.setDate(d.getDate() - days);
-  return d;
-}
-
 /**
- * A plausible history for the last SEED_WEEKS, PAST DAYS ONLY.
+ * A plausible history for the whole current year so far, PAST DAYS ONLY.
  *
  * A mock, like `profile.ts` — there is no real step source yet (the sync is
- * faked), so the heatmap would otherwise be one lonely cell. Today is left out on
- * purpose: its cell reflects the real committed count (0 until the first sync),
- * so the calendar never disagrees with the home ring. Delete this the day a real
- * Health source lands.
+ * faked), so the year heatmap would otherwise be one lonely cell. It fills from
+ * January 1st up to yesterday; today is left out on purpose: its cell reflects
+ * the real committed count (0 until the first sync), so the calendar never
+ * disagrees with the home ring. Delete this the day a real Health source lands.
  */
 function seedDemoHistory(): DayHistory {
   const today = new Date();
+  const todayKey = dayKey(today);
   const history: DayHistory = {};
 
-  for (let i = SEED_WEEKS * 7; i >= 1; i -= 1) {
-    const date = daysAgo(today, i);
-    const weekend = date.getDay() === 0 || date.getDay() === 6;
+  // Walk each day from Jan 1st, stopping the moment we reach today.
+  const cursor = new Date(today.getFullYear(), 0, 1);
+  while (dayKey(cursor) !== todayKey) {
+    const weekend = cursor.getDay() === 0 || cursor.getDay() === 6;
 
     // ~1 day in 7 is a rest day at zero — the gaps are what make a streak mean
     // something.
     if (Math.random() < 0.14) {
-      history[dayKey(date)] = 0;
-      continue;
+      history[dayKey(cursor)] = 0;
+    }
+    else {
+      // A weekday base around 7-9k, weekends lighter and streakier; an occasional
+      // banner day pushes into the top tier.
+      const base = weekend ? 3500 : 6500;
+      const spread = weekend ? 6000 : 5000;
+      let steps = base + Math.random() * spread;
+      if (Math.random() < 0.08)
+        steps = 15000 + Math.random() * 4500;
+
+      history[dayKey(cursor)] = Math.round(clamp(steps, 0, MAX_STEPS));
     }
 
-    // A weekday base around 7-9k, weekends lighter and streakier; an occasional
-    // banner day pushes into the top tier.
-    const base = weekend ? 3500 : 6500;
-    const spread = weekend ? 6000 : 5000;
-    let steps = base + Math.random() * spread;
-    if (Math.random() < 0.08)
-      steps = 15000 + Math.random() * 4500;
-
-    history[dayKey(date)] = Math.round(clamp(steps, 0, MAX_STEPS));
+    cursor.setDate(cursor.getDate() + 1);
   }
 
   return history;
@@ -121,6 +118,20 @@ const _useDayHistory = create<DayHistoryState>((set, get) => ({
 }));
 
 export const useDayHistory = createSelectors(_useDayHistory);
+
+/**
+ * Today's committed steps, read straight from MMKV.
+ *
+ * Lets `useBloomLab` restore the day's count on mount so an app restart doesn't
+ * drop it back to 0 — which, with the persisted "last seen level", would leave
+ * the day sitting below what the user already saw and wrongly mute the
+ * unseen-level-up badge. Reads storage directly so it doesn't depend on the store
+ * being hydrated yet.
+ */
+export function getTodaySteps(): number {
+  const stored = getItem<DayHistory>(HISTORY_KEY);
+  return stored?.[dayKey(new Date())] ?? 0;
+}
 
 export function recordDaySteps(steps: number) {
   return _useDayHistory.getState().record(steps);

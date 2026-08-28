@@ -18,7 +18,7 @@ import { clamp, mix } from '../bloom';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-const RING = 26;
+const RING = 22;
 const STROKE = 3;
 /** Arc length of the spinning segment, as a fraction of the circle. */
 const SPINNER_FRACTION = 0.28;

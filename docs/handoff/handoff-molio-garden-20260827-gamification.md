@@ -5,6 +5,118 @@
 
 ---
 
+## Session 2026-08-28 (2) — barre d'XP variante B, animations premium, badge notif, outil dev +10 000
+
+**Date :** 2026-08-28 · **Repo :** `/Users/thomas/Documents/dev/molio`
+**Branche :** `main` · **État git :** **rien de committé cette session** (5 fichiers modifiés,
+1 nouveau). Les sessions précédentes sont, elles, dans `main` (PR #5/#6/#7 mergées).
+**À lire d'abord :** la section 2026-08-28 (1) ci-dessous (barre d'XP capsule « E »,
+palette, level-up) — cette session la **retouche**.
+
+Session de **polish sur device** (émulateur iOS) : on a basculé la barre d'XP de la
+variante « E » vers la **« B »**, corrigé un vrai **bug de rendu SVG**, refondu les
+**animations de level-up** (halo + pop), refait l'**entrée + le design du badge de
+notification** de la Home (scale-in sans rebond, wiggle, encoche, icône « ! » vectorielle),
+et ajouté un **bouton dev « +10 000 pas »** qui rejoue tout le flux de sync.
+
+**Tout passe `pnpm --filter mobile type-check` (0) et `lint` (0 erreur ; 14 warnings
+`react-refresh` préexistants, aucun nouveau).** La barre d'XP a été **vue sur émulateur**
+(c'est ce qui a permis de trouver le bug SVG) ; le reste est à confirmer sur device.
+
+### 1. Barre d'XP : variante « E » (capsule) → **« B »** (corail lustré + liseré blanc)
+Décision utilisateur après comparaison de l'aperçu
+(https://claude.ai/code/artifact/73667437-...). B = remplissage corail **affleurant dans une
+gorge creusée**, liseré blanc en **anneau extérieur** (box-shadow spread, pas un cadre
+rembourré), dégradé corail **3 stops**, hauteur 14.
+- `palette.ts` : tokens `xp` restructurés — `capsule`/`frame` → **`track`/`bezel`/`groove`** +
+  `fillTop`/**`fillMid`**/`fillBottom`/`gloss`/`glow` (light + dark). Doc du token réécrite.
+- `garden-level-screen.tsx` `XpBar` : rail creusé (`boxShadow: inset groove + spread bezel`),
+  remplissage absolu affleurant, gloss sur l'arête, lueur corail qui déborde (rail **non
+  clippé**). Doré au niveau max conservé (`tiers[3]`).
+- **Réglage device** : le `track` a été assombri (`#ECE3D0` → **`#E2D6BE`**) et le `groove`
+  renforcé, sinon la partie vide lisait « blanc plat » au lieu d'une gorge.
+
+### 2. ⚠️ Bug corrigé — le dégradé SVG ne suivait pas la largeur animée
+Symptôme (vu sur device) : « petit bout orange puis blanc », incohérent avec la fraction.
+Cause : `<Svg style={StyleSheet.absoluteFill}>` **sans `width`/`height` explicites** →
+`react-native-svg` s'effondre à une taille par défaut, ne peignant qu'un stub. **Fix** : `<Svg>`
+en **pixels fixes** (`trackWidth × BAR_HEIGHT`), rogné à la largeur courante par l'`overflow`
+du remplissage. Nouveaux consts `BAR_HEIGHT`, `SHEET_PADDING`, style `fillGradient`.
+**NB** : l'ancienne barre « E » avait probablement le même bug latent (jamais vue tourner).
+
+### 3. Level-up (écran Niveau) : halo + pop refondus, **sans rebond**
+Trouvé « brouillon ». Cadre = skill `emil-design-eng`.
+- **Halo** : disque vert plein → **glow radial doux** (SVG `RadialGradient`, `HALO_SIZE =
+  AVATAR × 1.7`), respire `scale 0.92→1.08`/opacité 0→0.5. Se lit comme de la lumière.
+- **Pop badge** : montée franche `EASE_POP` (`bezier(0.22,1,0.32,1)`, 130 ms) puis descente.
+  **Un `withSpring` a d'abord été posé, puis retiré à la demande de l'utilisateur** (« enlever
+  le rebond ») → `withTiming(0, out.cubic, 420 ms)`. Scale badge `+0.22`.
+- Le retarge lisse en cas de multi-niveaux reste (withSequence relancé). Reduced-motion : rien.
+
+### 4. Badge de notification (Home) — entrée, wiggle, design, icône
+Le « ! » en haut-gauche du portrait (`useUnseenLevelUp`). Extrait en composant **`LevelUpBadge`**.
+- **Entrée** : `ZoomIn.springify().damping(13)` (rebond, part de scale 0) → **scale-in propre**
+  0.8→1 + fade, `Easing.out(Easing.cubic)` 260 ms, `transformOrigin: 'left bottom'` (éclot du
+  coin près du portrait). **Sans rebond** (décision réaffirmée).
+- **Wiggle** : secousse en rotation à l'apparition du badge — adaptation **Reanimated** du
+  snippet fourni (`withSequence` −8°→6°→−4°→2°→0°, 5×80 ms). Enveloppe **avatar + badge** pour
+  qu'ils tremblent d'un bloc. Reduced-motion respecté.
+- **Encoche** : le badge est rentré (`top/right: 0`, `borderWidth 2.5`) pour **mordre** dans
+  l'avatar ; l'anneau crème (`GARDEN_PAPER`) découpe une encoche côté fleur — effet iOS de
+  l'image de réf.
+- **Icône** : nouveau `components/alert-mark.tsx` — « ! » en SVG (tige effilée arrondie + point
+  détaché), remplace le glyphe de police jugé trop discret. Proportions retravaillées (tige
+  bien plus haute que le point).
+- **Couleur** : itérée rouge → or (`tiers[3]`) → **rouge final** (`palette.hues.red.petal`,
+  bon contraste avec le « ! » blanc). Décision utilisateur.
+
+### 5. Outil dev — bouton « +10 000 pas » (Home, bas-gauche)
+Pour tester notifications/animations sans tirer to sync en boucle. `AddStepsButton`, symétrique
+de `ResetButton`.
+- **Passe par le même flux que le pull-to-sync** : `useBloomLab.sync` accepte désormais un
+  `delta` optionnel (`delta = nextFakeDelta()` par défaut ; le geste appelle `sync()` sans arg →
+  aléatoire comme avant ; le bouton appelle `sync(10000)`). Donc **spinner + toast + badge +
+  floraison**, exactement comme un vrai sync. Désactivé pendant `refreshing`.
+
+### 6. ⚠️ Bug corrigé — le badge ne se déclenchait pas
+`committedSteps` repartait de **0** à chaque montage de `useBloomLab`, alors que `lastSeen`
+(niveau du dernier écran vu) est **persisté** : après un redémarrage, le jour retombait sous le
+dernier-vu → badge muet. **Fix** : `useBloomLab` **restaure le total du jour** au montage depuis
+le store d'historique déjà persisté — nouveau `getTodaySteps()` (`use-day-history.ts`, lecture
+MMKV directe, indépendante de l'hydratation). `committedSteps`/ref/`progress`/`counter` seedés à
+la valeur du jour. **Effet de bord assumé (positif)** : la Home restaure les pas du jour au
+redémarrage (jardin **posé**, sans révélation) au lieu de repartir à 0.
+
+### Fichiers de la session
+Nouveau : `components/alert-mark.tsx`.
+Modifiés : `palette.ts` (tokens `xp` B), `garden-level-screen.tsx` (XpBar B + fix SVG + halo/pop),
+`garden-home-screen.tsx` (LevelUpBadge, wiggle, encoche, AlertMark, AddStepsButton),
+`use-bloom-lab.ts` (`sync(delta?)`, restauration du total du jour),
+`use-day-history.ts` (`getTodaySteps`).
+NB : la fonction `useBloomLab` frôle la limite `max-lines-per-function` (110) — plusieurs micro-
+arbitrages de commentaires ont été faits pour rester dessous ; toute addition future y forcera
+une extraction (cf. dette).
+
+### Décisions utilisateur — ne pas relitiger
+- Barre d'XP = **variante B** (corail lustré + liseré blanc dans une gorge), pas la capsule E.
+- Animations de niveau **sans rebond** (ni sur le pop, ni sur l'entrée du badge).
+- Badge notif = **fond rouge**, « ! » en **icône SVG** (pas la police), qui **mord** dans l'avatar.
+- Le **+10 000** doit avoir **les mêmes conséquences qu'un pull-to-sync** (pas un `commit` direct).
+
+### À faire ensuite
+1. **Committer** cette session (elle est sur `main`, non committée) — idéalement sur une branche
+   + PR, comme les précédentes. Le `.scratch/` non trié reste un préalable (cf. dette).
+2. Écran **Classement social** (le gros morceau) — inchangé depuis la session (1).
+3. Retirer les **outils dev** (`+10 000`, `Réinitialiser`) quand la vraie source de pas arrivera.
+
+### À juger sur appareil (seule la barre d'XP a été vue)
+Barre B : contraste `track` `#E2D6BE` / crème, netteté du liseré blanc (box-shadow inset+spread
+sur iOS), lueur corail. Level-up : intensité du glow, rythme du pop sans rebond. Badge : le
+**wiggle** (ampleur 8°/durée), l'**encoche** (chevauchement + épaisseur d'anneau), les
+**proportions du « ! »**, le rouge. `+10 000` : enchaînement spinner→toast→badge→révélation.
+
+---
+
 ## Session 2026-08-28 — écran Stats/heatmap, store des pas, barème couleur, barre d'XP premium
 
 **Date :** 2026-08-28 · **Repo :** `/Users/thomas/Documents/dev/molio`
