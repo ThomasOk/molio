@@ -19,10 +19,14 @@ import { clamp, MAX_STEPS } from './bloom';
  * cell tracks live syncs. Days are keyed in LOCAL time (see `dayKey`).
  */
 
-// `.v2` retires the old 16-week demo seed so the fuller full-year mock takes its
-// place on next launch. Safe to bump while the data is still a mock — there is no
-// real step source yet. Drop the suffix once a real Health source lands.
-const HISTORY_KEY = 'garden.day.history.v2';
+// `.v3` retires the earlier demo seeds (16-week, then year-to-date) so the rolling
+// 52-week mock takes their place on next launch. Safe to bump while the data is
+// still a mock — there is no real step source yet. Drop the suffix once a real
+// Health source lands.
+const HISTORY_KEY = 'garden.day.history.v3';
+
+/** Days of demo history to seed — one rolling year, matching the heatmap window. */
+const SEED_DAYS = 52 * 7;
 
 export type DayHistory = Record<string, number>;
 
@@ -49,22 +53,21 @@ export function dayKey(date: Date): string {
 }
 
 /**
- * A plausible history for the whole current year so far, PAST DAYS ONLY.
+ * A plausible rolling year of history, PAST DAYS ONLY.
  *
  * A mock, like `profile.ts` — there is no real step source yet (the sync is
- * faked), so the year heatmap would otherwise be one lonely cell. It fills from
- * January 1st up to yesterday; today is left out on purpose: its cell reflects
- * the real committed count (0 until the first sync), so the calendar never
- * disagrees with the home ring. Delete this the day a real Health source lands.
+ * faked), so the heatmap would otherwise be one lonely cell. It fills the last
+ * `SEED_DAYS` up to yesterday; today is left out on purpose: its cell reflects the
+ * real committed count (0 until the first sync), so the calendar never disagrees
+ * with the home ring. Delete this the day a real Health source lands.
  */
 function seedDemoHistory(): DayHistory {
   const today = new Date();
-  const todayKey = dayKey(today);
   const history: DayHistory = {};
 
-  // Walk each day from Jan 1st, stopping the moment we reach today.
-  const cursor = new Date(today.getFullYear(), 0, 1);
-  while (dayKey(cursor) !== todayKey) {
+  for (let i = SEED_DAYS; i >= 1; i -= 1) {
+    const cursor = new Date(today);
+    cursor.setDate(cursor.getDate() - i);
     const weekend = cursor.getDay() === 0 || cursor.getDay() === 6;
 
     // ~1 day in 7 is a rest day at zero — the gaps are what make a streak mean
@@ -83,8 +86,6 @@ function seedDemoHistory(): DayHistory {
 
       history[dayKey(cursor)] = Math.round(clamp(steps, 0, MAX_STEPS));
     }
-
-    cursor.setDate(cursor.getDate() + 1);
   }
 
   return history;
