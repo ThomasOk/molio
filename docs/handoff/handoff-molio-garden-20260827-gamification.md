@@ -5,6 +5,71 @@
 
 ---
 
+## Session 2026-08-29 (2) — grille Stats en **fenêtre glissante 52 semaines** (finit aujourd'hui), légende **− / +**, libellé d'année + hint retirés
+
+**Date :** 2026-08-29 · **Repo :** `/Users/thomas/Documents/dev/molio`
+**Branche :** `main` · **État git :** **TOUT committé et mergé.** PR **#9** (handoff), puis PR **#10**
+(`feature/mobile-garden-stats-rolling-window`) mergée sur `main` (merge commit `7e50296`, HEAD).
+**À lire d'abord :** la section 2026-08-29 (1) ci-dessous — cette session **remplace la grille annuelle**
+qu'elle décrivait par une fenêtre glissante ; les décisions « grille annuelle scrollable » de la (1) sont
+**caduques** sur ce point (le reste — portrait coquelicot, rampe B, stats à 2 chiffres — tient).
+
+Itération **design pur** sur la grille de l'écran Stats, à partir d'aperçus artifact. **Tout passe
+`type-check` (0) et `lint` (0 erreur ; 14 warnings préexistants). Rien vu tourner sur appareil.**
+
+### 1. Grille = **fenêtre glissante de 52 semaines finissant aujourd'hui** (`garden-stats-screen.tsx`)
+Cheminement de la décision : d'abord la grille annuelle a été bornée **à aujourd'hui** (au lieu du 31 déc,
+qui laissait des semaines futures vides) → variante « **année-à-ce-jour** » (1ᵉʳ jan → aujourd'hui). Un
+**aperçu au 20 février** (artifact) a montré que cette variante est **très maigre en début d'année**
+(≈ 8 colonnes). L'utilisateur a donc tranché pour une **fenêtre glissante de 52 semaines** façon GitHub —
+toujours 12 mois pleins, **finissant sur aujourd'hui**. (La variante « année-à-ce-jour » n'a jamais été
+committée telle quelle ; `main` va directement de l'annuel — PR #8 — à la fenêtre glissante — PR #10.)
+- `buildYearGrid` → **`buildGrid`** : part de `mondayOf(today) − 51 semaines`, `WEEKS = 52` colonnes, se
+  termine sur la semaine en cours. Jours après aujourd'hui = cases vides (tier −1). Helper `windowStartFor`.
+- **`buildStats`** (série + meilleur jour) calculé sur cette même fenêtre.
+- **Scroll initial** = **bout de fenêtre** (aujourd'hui contre le bord droit) via `contentOffset` ; on glisse
+  à gauche pour l'historique. Plus de calcul `todayCol` (const `DAY_MS` retirée).
+- Libellés de mois : la contrainte « même année » saute (la fenêtre **chevauche 2025/2026**) → ils courent
+  `sept → … → déc → jan → … → août`, avec le passage d'année visible. `key` de label inclut l'année.
+
+### 2. Retraits (la grille se suffit à elle-même)
+- **Libellé « 2026 » supprimé** — plus de sens sur une fenêtre à cheval sur deux ans ; les mois portent le
+  repère.
+- **Hint « ← Glissez pour explorer l'année → » supprimé** — la grille tronquée à gauche + les mois sont
+  assez explicites. Styles `year`/`hint` retirés ; `gridRow` reprend la marge haute.
+
+### 3. Légende — cases à la taille de la grille + échelle **« − … + »**
+- Cases de la légende **dimensionnées sur `CELL` (14 px)**, comme les cellules de la grille (avant : 18 px).
+- Ajout d'une **échelle orientée** encadrant la rampe : `−` … rampe … `+` (gris `label`, `bold` 14 px,
+  centré). Testé « **Calme … Actif** » (proposition maison, plus « bien-être »), **remplacé par « − / + »**
+  à la demande de l'utilisateur. La rampe reste **B** (5 paliers, `tierForDay` inchangé).
+
+### 4. Seed démo → **52 semaines** + clé **v3** (`use-day-history.ts`)
+- `seedDemoHistory` remplit désormais les **52 dernières semaines** (`SEED_DAYS = 364`) jusqu'à hier (au
+  lieu de « année civile »), pour peupler toute la fenêtre glissante. Toujours un **mock**.
+- Clé de stockage **`…v2 → …v3`** : retire les seeds précédents au prochain lancement.
+
+### Fichiers de la session
+Modifiés : `garden-stats-screen.tsx` (fenêtre glissante, retraits, légende), `use-day-history.ts`
+(seed 52 sem. + clé v3). *(Le handoff a été committé à part en PR #9.)*
+
+### Décisions utilisateur — ne pas relitiger
+- Grille Stats = **fenêtre glissante 52 semaines finissant aujourd'hui** (pas l'année civile, pas
+  l'année-à-ce-jour). Ça **remplace** la « grille annuelle » de la section (1).
+- **Pas de libellé d'année, pas de hint** de scroll.
+- Légende = rampe à la **taille des cellules** + échelle **« − / + »** (pas « Calme/Actif », pas de liste).
+- Décisions de la (1) toujours valides **sauf** ce qui touche la grille annuelle.
+
+### À faire ensuite
+1. **Écran Classement social** en **fausses données** — le prochain gros morceau (avatars = `FlowerAvatar`,
+   tendance = `TierSquares` en ligne, couleurs = rampe `tiers`).
+2. À juger sur device : sans libellé d'année, le **passage déc→jan** au milieu de la grille suffit-il à se
+   repérer, ou faut-il un petit repère d'année ? (proposé, non fait). Taille des symboles `− / +` face aux
+   cases de 14 px. Rendu du **corail foncé** au sommet dans un champ de 52 semaines.
+3. Retirer les **outils dev** et les **mocks** (seed, clé `…v3`) avec la vraie source de pas.
+
+---
+
 ## Session 2026-08-29 — portrait fleur (coquelicot aquarelle), refonte écran Stats (heatmap annuelle), rampe de paliers « B », **tout committé sur `main`**
 
 **Date :** 2026-08-29 (travail étalé 08-28 → 08-29) · **Repo :** `/Users/thomas/Documents/dev/molio`
