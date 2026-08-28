@@ -13,24 +13,24 @@ import Animated, {
   useReducedMotion,
   useSharedValue,
   withRepeat,
+  withSequence,
   withTiming,
-  ZoomIn,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { toast } from 'sonner-native';
 
 import { strideFonts } from '@/lib/theme';
 import { BANDS, clamp, formatSteps, MAX_STEPS } from './bloom';
+import { AlertMark } from './components/alert-mark';
 import { AnimatedSteps } from './components/animated-steps';
-import { FlowerAvatar } from './components/flower-avatar';
 import { GardenFlipbook } from './components/garden-flipbook';
 import { GlassToast } from './components/glass-toast';
+import { ProfileFlower } from './components/profile-flower';
 import { PullLoader } from './components/pull-loader';
 import { StepRing } from './components/step-ring';
 import { TierSquares } from './components/tier-squares';
 import { clearLevelProgress } from './level-progress';
 import { GARDEN_PAPER, gardenPalettes } from './palette';
-import { PROFILE } from './profile';
 import { useBloomLab } from './use-bloom-lab';
 import { usePullToSync } from './use-pull-to-sync';
 import { useUnseenLevelUp } from './use-unseen-level-up';
@@ -110,12 +110,12 @@ export function GardenHomeScreen() {
       {/* A transparent full-screen layer over the garden (which is
           pointer-transparent), so a pull from anywhere charges the ring. */}
       <GestureDetector gesture={gesture}>
-        <View style={{ flex: 1, paddingTop: insets.top + 40 }}>
+        <View style={{ flex: 1, paddingTop: insets.top + 64 }}>
           <View style={{ alignItems: 'center' }}>
             <StepRing
               progress={lab.counter}
               palette={palette}
-              size={224}
+              size={208}
               stroke={7}
             >
               <AnimatedSteps progress={lab.counter} color={palette.ink} />
@@ -156,6 +156,13 @@ export function GardenHomeScreen() {
         onPress={() => router.push('/garden-stats')}
       />
 
+      <AddStepsButton
+        palette={palette}
+        bottom={insets.bottom + 12}
+        disabled={lab.refreshing}
+        onPress={() => lab.sync(ADD_STEPS_AMOUNT)}
+      />
+
       <ResetButton
         palette={palette}
         bottom={insets.bottom + 12}
@@ -167,6 +174,9 @@ export function GardenHomeScreen() {
     </View>
   );
 }
+
+/** How many steps the dev "grab steps" button adds — enough to vault several levels. */
+const ADD_STEPS_AMOUNT = 10000;
 
 /** The profile portrait, top-left — the way into the level / character screen. */
 function ProfileButton({
@@ -181,6 +191,28 @@ function ProfileButton({
   showBadge: boolean;
 }) {
   const reduced = useReducedMotion();
+  const wiggle = useSharedValue(0);
+
+  // A quick shake the moment the unseen-level-up badge appears — a jolt that pulls
+  // the eye to the corner, then settles. Degrees, decaying -8 → 6 → -4 → 2 → 0.
+  React.useEffect(() => {
+    if (showBadge && !reduced) {
+      wiggle.set(
+        withSequence(
+          withTiming(-8, { duration: 80 }),
+          withTiming(6, { duration: 80 }),
+          withTiming(-4, { duration: 80 }),
+          withTiming(2, { duration: 80 }),
+          withTiming(0, { duration: 80 }),
+        ),
+      );
+    }
+  }, [showBadge, reduced, wiggle]);
+
+  const wiggleStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${wiggle.get()}deg` }],
+  }));
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -194,17 +226,42 @@ function ProfileButton({
         opacity: pressed ? 0.6 : 1,
       })}
     >
-      <FlowerAvatar hue={PROFILE.flower} size={40} palette={palette} />
-      {showBadge && (
-        <Animated.View
-          pointerEvents="none"
-          entering={reduced ? undefined : ZoomIn.springify().damping(13)}
-          style={[BADGE, { backgroundColor: palette.ringDone, borderColor: GARDEN_PAPER }]}
-        >
-          <Text style={BADGE_TEXT}>!</Text>
-        </Animated.View>
-      )}
+      {/* Avatar and badge share one wrapper so the whole portrait shakes as a unit. */}
+      <Animated.View style={wiggleStyle}>
+        <ProfileFlower size={40} palette={palette} />
+        {showBadge && <LevelUpBadge palette={palette} />}
+      </Animated.View>
     </Pressable>
+  );
+}
+
+/**
+ * The unseen-level-up badge's entrance: a gentle scale-in — it inflates from 0.8
+ * to full size with a fade, eased out with no bounce, growing from the corner
+ * nearest the portrait so it reads as emerging from it rather than popping out of
+ * nothing. Under reduced motion it is simply present, no animation.
+ */
+function LevelUpBadge({ palette }: { palette: GardenPalette }) {
+  const reduced = useReducedMotion();
+  const appear = useSharedValue(reduced ? 1 : 0);
+
+  React.useEffect(() => {
+    if (!reduced)
+      appear.set(withTiming(1, { duration: 260, easing: Easing.out(Easing.cubic) }));
+  }, [reduced, appear]);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: appear.get(),
+    transform: [{ scale: 0.8 + 0.2 * appear.get() }],
+  }));
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[BADGE, { backgroundColor: palette.hues.red.petal, borderColor: GARDEN_PAPER, transformOrigin: 'left bottom' }, style]}
+    >
+      <AlertMark size={11} />
+    </Animated.View>
   );
 }
 
@@ -249,6 +306,44 @@ function StatsButton({
 }
 
 /**
+ * Dev-only: grab 10 000 steps in one tap — enough to vault several levels at once
+ * — so the bloom, the level-ups and the badge can be exercised without pulling to
+ * sync over and over. Fires the whole sync flow (spinner, toast, badge, bloom),
+ * exactly like a real pull-to-sync but with a fixed delta. Goes away with the mock.
+ */
+function AddStepsButton({
+  palette,
+  onPress,
+  bottom,
+  disabled,
+}: {
+  palette: GardenPalette;
+  onPress: () => void;
+  bottom: number;
+  disabled: boolean;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Récupérer 10 000 pas"
+      hitSlop={12}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        position: 'absolute',
+        bottom,
+        left: 20,
+        opacity: disabled ? 0.35 : pressed ? 0.5 : 1,
+      })}
+    >
+      <GardenText palette={palette} variant="caption">
+        +10 000 pas
+      </GardenText>
+    </Pressable>
+  );
+}
+
+/**
  * A quiet way back to zero. Dev-facing while the screen runs on the mocked sync
  * — a real home would not let you erase your own steps.
  */
@@ -288,27 +383,21 @@ const BAND: TextStyle = { marginTop: 16, alignSelf: 'stretch', textAlign: 'cente
 const HINT: TextStyle = { marginTop: 22, alignSelf: 'stretch', textAlign: 'center' };
 
 /**
- * The unseen-level-up badge, on the portrait's top-right. A "!" — the RPG quest
- * marker for "something new to see here" — rather than a bare dot.
+ * The unseen-level-up badge, biting into the portrait's top-right. It overlaps the
+ * avatar (not floated off its corner) and its thick paper-coloured ring punches a
+ * notch out of the flower where the two meet — the way an iOS badge crops its host
+ * — so the "!" reads as pinned onto the portrait, not hovering beside it.
  */
 const BADGE: ViewStyle = {
   position: 'absolute',
-  top: -5,
-  right: -5,
-  minWidth: 18,
+  top: 0,
+  right: 0,
+  width: 18,
   height: 18,
   borderRadius: 9,
-  borderWidth: 2,
+  borderWidth: 2.5,
   alignItems: 'center',
   justifyContent: 'center',
-};
-
-const BADGE_TEXT: TextStyle = {
-  fontFamily: strideFonts.black,
-  fontSize: 11,
-  lineHeight: 14,
-  color: '#FFFFFF',
-  textAlign: 'center',
 };
 
 /**

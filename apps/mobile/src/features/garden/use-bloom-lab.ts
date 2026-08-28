@@ -22,7 +22,7 @@ import {
   MAX_STEPS,
 } from './bloom';
 import { SWAY_LOOP_MS } from './flora';
-import { recordDaySteps } from './use-day-history';
+import { getTodaySteps, recordDaySteps } from './use-day-history';
 
 /**
  * The bloom curve. Gentle at both ends (`inOut`) so a long sync reads as a slow
@@ -104,18 +104,18 @@ export function useBloomLab() {
   const [bandIndex, setBandIndex] = React.useState(0);
   const [refreshing, setRefreshing] = React.useState(false);
   const [lastDelta, setLastDelta] = React.useState<number | null>(null);
-  const [committedSteps, setCommittedSteps] = React.useState(0);
-
-  /** Steps as last committed. Each animation runs from here to the new value. */
-  const committedStepsRef = React.useRef(0);
+  // Restore today's committed total (persisted) so a restart keeps the count — and the badge.
+  const [initialSteps] = React.useState(getTodaySteps);
+  const [committedSteps, setCommittedSteps] = React.useState(initialSteps);
+  const committedStepsRef = React.useRef(initialSteps);
   const syncTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // The garden clock. Drives the flipbook, the bloom and the abundance.
-  const progress = useSharedValue(0);
+  // The garden clock. Drives flipbook/bloom/abundance; seeded at today's fraction.
+  const progress = useSharedValue(initialSteps / MAX_STEPS);
   // The instrument clock, decoupled from the garden so the digits and their
   // ring can settle quickly while the garden takes its time. Same destination,
   // different speed — see bloom.ts.
-  const counter = useSharedValue(0);
+  const counter = useSharedValue(initialSteps / MAX_STEPS);
   const bloom = useDerivedValue(() => bloomFromProgress(progress.get()));
   const abundance = useDerivedValue(() => abundanceFromProgress(progress.get()));
   const clock = useLoopClock(motion, SWAY_LOOP_MS);
@@ -180,11 +180,11 @@ export function useBloomLab() {
     progress.set(withTiming(0, { duration: 700, easing: EASE_OUT }));
   }, [counter, progress]);
 
-  const sync = React.useCallback(() => {
+  const sync = React.useCallback((delta = nextFakeDelta()) => { // fixed delta = dev "grab steps" button; else a random Health delta — same flow either way
     setRefreshing(true);
     syncTimerRef.current = setTimeout(() => {
       setRefreshing(false);
-      commit(committedStepsRef.current + nextFakeDelta());
+      commit(committedStepsRef.current + delta);
     }, SYNC_MS);
   }, [commit]);
 

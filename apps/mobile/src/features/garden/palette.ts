@@ -49,24 +49,32 @@ export type GardenPalette = {
   ringDone: string;
   /**
    * The heatmap ramp, indexed by tier (see `tierForDay`): [empty, 1, 2, 3, 4].
-   * Index 0 is an unlit cell on the paper; 1-2 climb through the garden greens,
-   * then the ramp BLOOMS warm at 10 000 steps — the symbolic day's-target — with
-   * gold (tier 3) giving way to a coral flower at the top (tier 4). Green means
-   * "active", the warm break rewards the big days. Shared by the stats heatmap
-   * and the future leaderboard trend.
+   * Index 0 is an unlit cell on the paper; 1-3 climb through the garden greens,
+   * each DARKER than the last so the scale reads by luminance alone (a heatmap's
+   * whole job); only the top day (15 000+) BLOOMS into a deep coral — a warm peak
+   * kept darker than the green below it, so the reward never breaks the order.
+   * Green means "active", the coral crown rewards the biggest days. Shared by the
+   * stats heatmap and the future leaderboard trend.
    */
   tiers: readonly [string, string, string, string, string];
   /**
-   * The level screen's XP bar — an ivory capsule holding a warm coral fill, its
-   * own warm accent apart from the green goal ring. Progress on the character
-   * sheet reads as a bloom, tying the bar to the profile flower and the heatmap's
-   * warm top tiers. A vertical fillTop→fillBottom gradient gives it depth; `gloss`
-   * is the specular highlight, `glow` the soft coral halo around the fill.
+   * The level screen's XP bar — a warm coral fill sunk into a recessed groove,
+   * ringed by a crisp white bezel (variant "B"). Its own warm accent apart from
+   * the green goal ring: progress on the character sheet reads as a bloom, tying
+   * the bar to the profile flower and the heatmap's warm top tiers.
+   *
+   * `track` is the groove — a hair darker than the paper, so the empty part reads
+   * as hollow; `groove` is the inset shadow that hollows it and `bezel` the white
+   * ring around it. The fill rides flush in the groove with a three-stop
+   * fillTop→fillMid→fillBottom coral gradient; `gloss` is the specular crest,
+   * `glow` the soft coral halo bleeding past the fill.
    */
   xp: {
-    capsule: string;
-    frame: string;
+    track: string;
+    bezel: string;
+    groove: string;
     fillTop: string;
+    fillMid: string;
     fillBottom: string;
     gloss: string;
     glow: string;
@@ -105,14 +113,16 @@ const LIGHT: GardenPalette = {
   ring: '#3E6B47',
   ringTrack: '#E4DFD1',
   ringDone: '#7AB22C',
-  tiers: ['#E7E1D2', '#C7DE96', '#7CB53C', '#F2B23C', '#EE7A46'],
+  tiers: ['#E7E1D2', '#CBE4A2', '#8FC24A', '#4F8E2E', '#C0492E'],
   xp: {
-    capsule: '#FBF7EF',
-    frame: '#FFFFFF',
+    track: '#E2D6BE',
+    bezel: '#FFFFFF',
+    groove: 'rgba(92, 68, 34, 0.24)',
     fillTop: '#F59B77',
+    fillMid: '#EE7A46',
     fillBottom: '#E86A44',
-    gloss: 'rgba(255, 255, 255, 0.5)',
-    glow: 'rgba(232, 106, 68, 0.4)',
+    gloss: 'rgba(255, 255, 255, 0.55)',
+    glow: 'rgba(232, 106, 68, 0.45)',
   },
   ringSync: '#9E5F46',
   haze: '#9DBE72',
@@ -155,14 +165,16 @@ const DARK: GardenPalette = {
   ring: '#4E8A5A',
   ringTrack: '#1C2620',
   ringDone: '#9BD24E',
-  tiers: ['#1C2620', '#31502A', '#4F7E2C', '#C6942F', '#C96A4C'],
+  tiers: ['#26302A', '#33552B', '#4F8A2C', '#77BE3C', '#DE6B48'],
   xp: {
-    capsule: '#241712',
-    frame: '#3A241B',
+    track: '#1A120D',
+    bezel: '#3A241B',
+    groove: 'rgba(0, 0, 0, 0.4)',
     fillTop: '#E88A63',
+    fillMid: '#D2704E',
     fillBottom: '#C96A4C',
-    gloss: 'rgba(255, 255, 255, 0.32)',
-    glow: 'rgba(201, 106, 76, 0.45)',
+    gloss: 'rgba(255, 255, 255, 0.38)',
+    glow: 'rgba(201, 106, 76, 0.5)',
   },
   ringSync: '#BD7D64',
   haze: '#24402C',

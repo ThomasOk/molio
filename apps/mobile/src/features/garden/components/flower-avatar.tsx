@@ -9,6 +9,12 @@ type Props = {
   hue: Hue;
   size: number;
   palette: GardenPalette;
+  /**
+   * Whether to draw the white portrait disc + hairline frame behind the petals.
+   * Default (true) is the framed avatar; pass false for a loose bloom — e.g. a
+   * small flower mark set inline beside a heading.
+   */
+  disc?: boolean;
 };
 
 /**
@@ -19,7 +25,7 @@ type Props = {
  * primitive every leaderboard row will use for its own flower. Predefined for
  * now (one hue); later the user picks the species and colour.
  */
-export function FlowerAvatar({ hue, size, palette }: Props) {
+export function FlowerAvatar({ hue, size, palette, disc = true }: Props) {
   const h = palette.hues[hue];
   const c = size / 2;
   const frame = Math.max(1.5, size * 0.04);
@@ -27,7 +33,9 @@ export function FlowerAvatar({ hue, size, palette }: Props) {
   return (
     <Svg width={size} height={size}>
       {/* The portrait disc — a white ground with a hairline frame. */}
-      <Circle cx={c} cy={c} r={c - frame / 2} fill={palette.card} stroke={palette.cardBorder} strokeWidth={frame} />
+      {disc && (
+        <Circle cx={c} cy={c} r={c - frame / 2} fill={palette.card} stroke={palette.cardBorder} strokeWidth={frame} />
+      )}
 
       <G>
         {Array.from({ length: PETALS }, (_, i) => (
