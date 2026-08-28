@@ -12,7 +12,8 @@ import { TierSquares } from './components/tier-squares';
 import { GARDEN_PAPER, gardenPalettes } from './palette';
 import { dayKey, useDayHistory } from './use-day-history';
 
-/** The grid spans a whole calendar year: week-columns × 7 day-rows, Monday-first. */
+/** A rolling window of 52 week-columns × 7 day-rows (Monday-first) ending today. */
+const WEEKS = 52;
 const ROWS = 7;
 const CELL = 14;
 const CELL_GAP = 2;
@@ -23,7 +24,6 @@ const SCREEN_PADDING = 20;
 /** Height reserved above the grid for the month labels. */
 const MONTH_ROW_H = 16;
 const MONTH_ROW_MB = 6;
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Short month names (FR), matching the mock's "jan fév mar…". */
 const MONTHS_SHORT = [
@@ -85,63 +85,63 @@ type Stats = {
   best: number;
 };
 
+/** The Monday that opens the rolling window: `WEEKS - 1` weeks before this week. */
+function windowStartFor(today: Date): Date {
+  return shiftDays(mondayOf(today), -(WEEKS - 1) * 7);
+}
+
 /**
- * Build the full-year tier grid (column per week) and its month labels.
- *
- * Columns run from the Monday on/before Jan 1st to the week holding Dec 31st.
- * Cells outside the year (leading/trailing days of the boundary weeks) and future
- * days hold their place but stay unpainted (tier -1). Months are pinned by each
- * week's Thursday — the ISO convention — so a boundary week lands its label in the
- * month it mostly belongs to, never on a stray December from the previous year.
+ * Build the rolling 52-week tier grid (column per week) ending on TODAY, plus its
+ * month labels — a GitHub-style contributions window that always closes on the
+ * current day. It spans back a full year, so it crosses the year boundary; months
+ * are pinned by each week's Thursday (the ISO convention). Days after today (this
+ * week's tail) hold their place but stay unpainted (tier -1).
  */
-function buildYearGrid(history: Record<string, number>, today: Date): Grid {
-  const year = today.getFullYear();
-  const yearStart = mondayOf(new Date(year, 0, 1));
-  const lastMonday = mondayOf(new Date(year, 11, 31));
-  const columns = Math.round((lastMonday.getTime() - yearStart.getTime()) / (7 * DAY_MS)) + 1;
-  const jan1 = new Date(year, 0, 1).getTime();
-  const dec31 = startOfDay(new Date(year, 11, 31)).getTime();
+function buildGrid(history: Record<string, number>, today: Date): Grid {
+  const start = windowStartFor(today);
   const todayMs = startOfDay(today).getTime();
 
   const tiers: number[] = [];
   const monthLabels: Grid['monthLabels'] = [];
   let prevMonth = -1;
 
-  for (let c = 0; c < columns; c += 1) {
+  for (let c = 0; c < WEEKS; c += 1) {
     // The week's Thursday decides which month owns this column.
-    const thursday = shiftDays(yearStart, c * 7 + 3);
-    if (thursday.getFullYear() === year && thursday.getMonth() !== prevMonth) {
-      monthLabels.push({ column: c, label: MONTHS_SHORT[thursday.getMonth()], key: `m${thursday.getMonth()}` });
+    const thursday = shiftDays(start, c * 7 + 3);
+    if (thursday.getMonth() !== prevMonth) {
+      monthLabels.push({
+        column: c,
+        label: MONTHS_SHORT[thursday.getMonth()],
+        key: `${thursday.getFullYear()}-${thursday.getMonth()}`,
+      });
       prevMonth = thursday.getMonth();
     }
 
     for (let r = 0; r < ROWS; r += 1) {
-      const date = shiftDays(yearStart, c * 7 + r);
-      const ms = date.getTime();
+      const date = shiftDays(start, c * 7 + r);
       tiers[c * ROWS + r]
-        = ms < jan1 || ms > dec31 || ms > todayMs
+        = startOfDay(date).getTime() > todayMs
           ? -1
           : tierForDay(history[dayKey(date)] ?? 0);
     }
   }
 
-  return { tiers, monthLabels, columns };
+  return { tiers, monthLabels, columns: WEEKS };
 }
 
 /**
- * Streak and best day over the year.
+ * Streak and best day over the rolling window.
  *
  * The streak counts back from today, but lets today be "pending": if today has
  * no steps yet (common — you sync later in the day), it starts from yesterday so
  * the number reflects the run you're on, not a zero you haven't filled.
  */
 function buildStats(history: Record<string, number>, today: Date): Stats {
-  const year = today.getFullYear();
-  const yearStart = new Date(year, 0, 1);
+  const start = windowStartFor(today);
   const todayMs = startOfDay(today).getTime();
 
   let best = 0;
-  for (let d = new Date(yearStart); d.getTime() <= todayMs; d.setDate(d.getDate() + 1)) {
+  for (let d = new Date(start); d.getTime() <= todayMs; d.setDate(d.getDate() + 1)) {
     const steps = history[dayKey(d)] ?? 0;
     if (steps > best)
       best = steps;
@@ -159,13 +159,13 @@ function buildStats(history: Record<string, number>, today: Date): Stats {
 }
 
 /**
- * Stats screen — the year's steps as a contributions calendar.
+ * Stats screen — the last year of steps as a contributions calendar.
  *
- * A full-year heatmap on the garden's paper, scrolled horizontally, in the shared
- * tier colours, plus the streak and best day. Reads the day-history store, so a
- * sync done on the home screen shows up here on the next visit. Offline; no real
- * step source yet, so the grid is seeded with demo history (past days only — today
- * tracks real syncs).
+ * A rolling 52-week heatmap on the garden's paper, scrolled horizontally, in the
+ * shared tier colours, plus the streak and best day. Reads the day-history store,
+ * so a sync done on the home screen shows up here on the next visit. Offline; no
+ * real step source yet, so the grid is seeded with demo history (past days only —
+ * today tracks real syncs).
  */
 export function GardenStatsScreen() {
   const palette = gardenPalettes.light;
@@ -176,19 +176,16 @@ export function GardenStatsScreen() {
   // Recompute only when the history or width changes — not every render. `today`
   // is captured per computation; the screen is short-lived enough not to need a
   // midnight rollover watcher.
-  const { grid, stats, year, scrollX } = React.useMemo(() => {
+  const { grid, stats, scrollX } = React.useMemo(() => {
     const today = new Date();
-    const yearStart = mondayOf(new Date(today.getFullYear(), 0, 1));
-    const g = buildYearGrid(history, today);
-    // Open the grid on the recent weeks (today near the right edge); the user
-    // scrolls left to explore earlier in the year.
-    const todayCol = Math.floor((startOfDay(today).getTime() - yearStart.getTime()) / (7 * DAY_MS));
     const visibleGrid = width - SCREEN_PADDING * 2 - GUTTER;
+    const contentWidth = WEEKS * CELL_STEP - CELL_GAP;
     return {
-      grid: g,
+      grid: buildGrid(history, today),
       stats: buildStats(history, today),
-      year: today.getFullYear(),
-      scrollX: Math.max(0, (todayCol + 1) * CELL_STEP - visibleGrid),
+      // Open on the end of the window — today sits flush against the right edge;
+      // the user scrolls left to walk back through the year.
+      scrollX: Math.max(0, contentWidth - visibleGrid),
     };
   }, [history, width]);
 
@@ -215,8 +212,6 @@ export function GardenStatsScreen() {
           <View style={[styles.statDivider, { backgroundColor: palette.cardBorder }]} />
           <StatBlock value={formatSteps(stats.best)} label="meilleur jour" palette={palette} />
         </View>
-
-        <Text style={[styles.year, { color: palette.inkSoft }]}>{year}</Text>
 
         <View style={styles.gridRow}>
           {/* Fixed weekday gutter — stays put while the grid scrolls under it. */}
@@ -251,15 +246,13 @@ export function GardenStatsScreen() {
           </ScrollView>
         </View>
 
-        <Text style={[styles.hint, { color: palette.label }]}>
-          ← Glissez pour explorer l'année →
-        </Text>
-
-        {/* The tier ramp, smallest → largest, centred — the scale at a glance. */}
+        {/* The tier ramp, calm → active, centred — the scale at a glance. */}
         <View style={styles.legend}>
+          <Text style={[styles.legendCap, { color: palette.label }]}>−</Text>
           {palette.tiers.map(color => (
             <View key={color} style={[styles.legendSwatch, { backgroundColor: color }]} />
           ))}
+          <Text style={[styles.legendCap, { color: palette.label }]}>+</Text>
         </View>
       </ScrollView>
     </View>
@@ -375,15 +368,9 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     marginVertical: 6,
   },
-  year: {
-    marginTop: 20,
-    marginBottom: 10,
-    fontFamily: strideFonts.bold,
-    fontSize: 14,
-    lineHeight: 18,
-  },
   gridRow: {
     flexDirection: 'row',
+    marginTop: 24,
   },
   weekday: {
     fontFamily: strideFonts.medium,
@@ -398,22 +385,22 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 14,
   },
-  hint: {
-    marginTop: 12,
-    fontFamily: strideFonts.medium,
-    fontSize: 11,
-    lineHeight: 14,
-    textAlign: 'center',
-  },
   legend: {
     marginTop: 24,
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
   },
   legendSwatch: {
-    width: 18,
-    height: 18,
+    width: CELL,
+    height: CELL,
     borderRadius: 3,
+  },
+  legendCap: {
+    fontFamily: strideFonts.bold,
+    fontSize: 14,
+    lineHeight: 14,
+    marginHorizontal: 3,
   },
 });
