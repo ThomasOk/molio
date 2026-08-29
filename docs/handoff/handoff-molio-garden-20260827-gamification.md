@@ -5,6 +5,219 @@
 
 ---
 
+## Session 2026-08-29 (6) — **écran Classement du jour** (fausses données), accès depuis la feuille de personnage, bouton en relief
+
+**Date :** 2026-08-29 · **Repo :** `/Users/thomas/Documents/dev/molio`
+**Branche :** `main` · **État git :** ⚠️ **rien de committé pendant la session** — commité et
+mergé par cette même session juste après, en PR séparées (voir section 7).
+**À lire d'abord :** la session 2026-08-29 (5) ci-dessous (celle qui annonçait le classement
+comme prochain gros morceau) + `friends.ts` / `leaderboard.ts` / `garden-leaderboard-screen.tsx`
+directement, le code est plus court que ce handoff.
+
+Le morceau annoncé depuis quatre sessions. Un aperçu artifact a précédé le code (référence
+fournie par l'utilisateur, une app d'habitudes façon iOS), puis trois itérations en cours de
+route sur commentaire direct de l'utilisateur : l'entrée a changé d'endroit deux fois, et le
+bouton d'accès a été refait une fois pour un vrai défaut visuel.
+Artifact (mis à jour sur la même URL à chaque itération) :
+https://claude.ai/code/artifact/604c6b0f-f577-477c-9221-d77a024e07ab
+
+**Tout passe `pnpm --filter mobile type-check` (0) et `lint` (0 erreur ; 14 warnings
+`react-refresh` préexistants, aucun ajouté) à chaque étape. `expo export --platform ios` →
+bundle OK à chaque étape. Rien vu tourner sur appareil ni sur simulateur cette session.**
+
+### 1. L'écran Classement (`garden-leaderboard-screen.tsx`, nouveau)
+
+Une ligne par marcheur : rang · fleur (42 px) · nom + pas du jour · 7 carrés de tendance.
+Transposition assumée de la référence, pas une copie — voir section 5 pour l'arbitrage qui en
+est le cœur.
+
+- **`friends.ts`** (nouveau) — 11 marcheurs en dur, un mock explicite comme `profile.ts` et le
+  seed de `use-day-history.ts`. Une seule teinte est réservée (`coral`, celle de `PROFILE`), les
+  autres se répètent parfois — c'est l'état honnête d'un jardin, le rang et le nom portent
+  l'identité de toute façon.
+- **`leaderboard.ts`** (nouveau) — `buildStandings(history, today)` fusionne moi (lu depuis
+  `useDayHistory`, **pas mocké**) et les amis, trie par pas du jour décroissant (départage par
+  nom), dérive les paliers des 7 derniers jours via `tierForDay`. **Ma ligne n'est pas un mock** :
+  un sync sur la Home me fait remonter le classement pour de vrai, et le bouton dev
+  `+10 000 pas` est le moyen le plus rapide de le vérifier.
+- **`components/trend-row.tsx`** (nouveau) — délibérément PAS `TierSquares` (qui sert la
+  heatmap) : la seule vraie règle empruntée à la référence, **un jour à 0 se rétracte en point**
+  (5 px) au lieu de peindre un carré plein. Sur le crème, le palier 0 (`#E7E1D2`) est à un
+  cheveu du fond ; un carré plein à cette taille s'y lit comme un trou. Deux tailles seulement,
+  jamais cinq — la couleur porte déjà l'intensité, la taille ne dit que « ce jour a eu lieu ».
+- **Fond nu, pas de cartes** — cohérent avec la décision déjà prise sur l'écran Stats. Testé
+  en A/B dans l'artifact (papier + filet vs cartes blanches) : neuf cartes blanches auraient
+  fait de cet écran le plus bruyant de l'app.
+- **Ma ligne = pastille plus claire que le papier** (`#FFFDF7`), filet, mention « VOUS » — mais
+  seulement pour la ligne dans la liste, jamais pour la barre épinglée (section 2), qui répète
+  le même visuel pour rester lisible en flottant sur le contenu qui défile derrière.
+- **`formatDayMonth`** ajouté à `calendar.ts` — « samedi 29 août », sans année : le classement
+  parle d'aujourd'hui, une année dessus le ferait lire comme une archive.
+
+### 2. Ma ligne reste joignable — la barre épinglée
+
+Quand ma ligne sort du viewport, une copie glisse depuis le bas ; un tap dessus recentre le
+scroll dessus.
+
+- **Position par arithmétique, pas par mesure** : `listTop + myRank × ROW_H` (`ROW_H = 68` fixe).
+  Un seul événement `onLayout` sur le conteneur de liste plutôt qu'une ref par ligne, et
+  l'arithmétique reste juste pendant le scroll — condition : aucune ligne ne peut grandir sous
+  une police plus grande, ce qui tient tant que `numberOfLines={1}` sur le nom.
+- **`useAnimatedReaction` sur le franchissement, pas `useDerivedValue` seul.** Premier essai :
+  un `withTiming` retourné directement par le `useDerivedValue` de visibilité — relancé à
+  **chaque frame de scroll**, il ne finit jamais d'arriver puisqu'il est sans cesse redémarré.
+  Correction : un `useAnimatedReaction` qui compare `next !== previous` et n'anime que sur le
+  changement d'état (160 ms).
+- **`pinHeight` calculé une fois** (`ROW_H + PIN_PAD*2 + insets.bottom`) et partagé entre le
+  test de visibilité, le padding du bas de la liste et le décalage de glissement — sinon la
+  barre s'arrête à mi-chemin hors écran sur les appareils à home indicator.
+- **Non jugé sur appareil.** L'utilisateur avait validé le principe sur l'aperçu (« épinglé, je
+  regarderai ce que ça donne ») ; c'est le point le plus exposé de tout l'écran.
+
+### 3. L'accès — trois versions en une session, sur commentaires directs
+
+L'ordre compte, chaque étape corrige la précédente sur intervention de l'utilisateur :
+
+1. **D'abord un glyphe sur la Home**, à côté du bouton Stats (trois barres décroissantes,
+   16 px). **Rejeté par l'utilisateur** avant même d'être vu tourner — question posée
+   directement : « et si on mettait l'accès sur l'écran Niveau ? »
+2. **Argument retenu, plus fort que « désencombrer la Home »** : les deux coins hauts de la
+   Home disent tous les deux « moi » (mon portrait, mon activité) ; le classement est la
+   première chose de l'app qui parle des *autres*, il n'est pas de la même nature. L'écran
+   Niveau est la feuille de personnage — un rang y est une statistique de personnage comme le
+   niveau. Glyphe retiré, **une ligne texte posée dans le bloc centré** (« 6ᵉ sur 12 au
+   classement › »), lisant `useDayHistory` pour calculer le rang.
+3. **Rejeté à son tour** : « je pense qu'on devrait juste mettre un bouton pour consulter le
+   classement sans rien révéler directement ». Bon argument de ton, pas d'information — l'écran
+   Niveau est celui où atterrit un passage de niveau, y imprimer un rang accueille ce moment par
+   un verdict. **La ligne devient un bouton muet**, sorti du bloc centré (`position: absolute`
+   en bas), qui n'affiche plus le rang — et l'écran Niveau perd sa dépendance à
+   `useDayHistory`/`buildStandings` en même temps.
+4. **Icône + relief demandés explicitement** (deux images de référence fournies : une app
+   d'habitudes, et trois boutons ronds en glassmorphism). Voir sections 4 et 5.
+
+Le point qui reste vrai à travers les trois versions : **l'écran Niveau ne bouge pas**. Le lien
+est en `position: absolute`, hors du bloc centré — portrait, barre d'XP, compteur gardent
+exactement le cadrage déjà réglé.
+
+### 4. L'icône — `components/podium-mark.tsx` (nouveau)
+
+Trois marches, la plus haute au centre, dans l'agencement d'un vrai podium (2ᵉ à gauche, 1ʳᵉ au
+centre, 3ᵉ à droite) — c'est ce qui empêche trois barres de se lire comme un graphique.
+
+- **Marches plates**, pas de capsules — un podium est une chose sur laquelle on se tient ; des
+  sommets arrondis lisent comme un diagramme à barres aux bouts pilule.
+- **Couleurs = rampe des paliers, montée jusqu'au corail pour la 1ʳᵉ place** — le même sommet
+  que la heatmap donne au meilleur jour de l'année ; les deux écrans récompensent le haut d'une
+  échelle par une seule couleur. Effet de bord voulu : ça évite aussi qu'une marche dans un vert
+  pâle (`tiers[1]`, `#CBE4A2`) se délave sur le crème — un podium avec une marche invisible est
+  un podium cassé. **Prise d'initiative de l'agent, non redemandée par l'utilisateur** — à
+  confirmer, le corail est déjà pris par la barre d'XP juste au-dessus.
+
+### 5. Le bouton en relief — `components/raised-button.tsx` (nouveau) + `palette.ts` (`raised`)
+
+Demande explicite : « donner un effet de relief au bouton, quelque chose qui donne envie
+d'appuyer », avec une image de référence (boutons ronds glassmorphism).
+
+- **La recette de la barre d'XP, retournée.** Là, l'ombre `inset` est en HAUT et creuse une
+  gorge ; ici la même ombre passe en BAS et bombe la face vers l'utilisateur au lieu de la
+  creuser. Zéro dépendance ajoutée — `boxShadow`, déjà éprouvé sur Android par la barre elle-même
+  (session (5), l'enquête liquid glass).
+- 🐛 **Corrigé en cours de session, signalé par l'utilisateur** (« la zone blanche du bouton ne
+  fait pas propre, ça fait une tâche ») : le premier jet copiait le calque blanc plein de la
+  barre d'XP (une `View` couvrant les 40 % du haut). À 14 px de haut ce calque a son bord bas à
+  un ou deux pixels de la crête, invisible ; agrandi à un bouton de 46 px, ce même bord trace une
+  **couture nette en travers de la face**. La lumière sur une courbe n'a pas de bord : le calque
+  est remplacé par une **ombre interne floue** (`inset 0px 7px 9px`) qui s'éteint au lieu de
+  s'arrêter. Le composant y perd une couche de style, il est plus court qu'avant. Le jeton
+  `palette.raised.gloss` porte maintenant en commentaire la règle « ombre interne floue, jamais
+  calque peint » pour empêcher de refaire l'erreur en agrandissant un autre bouton un jour.
+- **Nouveau jeu de jetons `palette.raised`** (`face`, `gloss`, `bezel`, `seat`, `shadow`), light
+  et dark, documenté à côté de `xp`. Délibérément non teinté — l'accent du bouton est son icône,
+  la barre d'XP juste au-dessus possède déjà le corail de l'écran.
+- **Le bouton s'enfonce sous le doigt** : échelle 0,965, assombrissement léger.
+  **90 ms à la descente (le doigt est déjà là), 220 ms à la remontée** (un relâchement qui doit
+  se lire comme une remontée, pas un instantané) — asymétrie déjà établie ailleurs dans l'app
+  (le pop de level-up). **Sans rebond**, conformément à la décision déjà prise sur toutes les
+  animations de niveau. Sous mouvement réduit, l'échelle disparaît et seul l'assombrissement
+  répond.
+- **Pas de chevron sur le bouton** — la flèche du lien texte était le seul signal « tappable » ;
+  le relief le remplace, deux signes pour un seul travail est de trop.
+
+### 6. Décisions utilisateur — ne pas relitiger
+
+- Le classement se transpose, il ne se copie pas : **la couleur des carrés reste le barème
+  partagé `palette.tiers`** (déjà pris par la heatmap), **l'identité passe dans la fleur**
+  (`FlowerAvatar`, recolorable).
+- Fond nu, pas de cartes. Jour à 0 = point, pas carré plein. Sept jours de tendance, pas cinq.
+- Ma ligne **s'épingle** en bas de l'écran quand elle sort du scroll — validé sur artifact,
+  **pas encore jugé sur appareil**.
+- L'accès au classement est sur l'**écran Niveau**, pas sur la Home — **glyphe de coin refusé**,
+  **ligne de rang refusée**, retenu : **un bouton muet qui ne révèle aucun rang**.
+- Le bouton doit avoir un **relief qui donne envie d'appuyer**, avec une **icône de podium**
+  (marches plates, demandées explicitement après un premier jet en capsules).
+
+### 7. Fichiers de la session
+
+**Nouveaux** (`apps/mobile/src/features/garden/`) : `friends.ts`, `leaderboard.ts`,
+`components/trend-row.tsx`, `components/podium-mark.tsx`, `components/raised-button.tsx`,
+`garden-leaderboard-screen.tsx`. Plus `app/garden-leaderboard.tsx`.
+**Modifiés** : `calendar.ts` (`formatDayMonth`), `index.ts` (export), `app/_layout.tsx` (route,
+`contentStyle`), `palette.ts` (jetons `raised`), `garden-level-screen.tsx` (le bouton).
+`garden-home-screen.tsx` **n'a subi aucun changement net** — un glyphe y a été ajouté puis
+retiré dans la même session (voir section 3.1-3.2).
+
+Committé par cette session juste après ce handoff, en PR séparées :
+1. L'écran Classement (`friends.ts`, `leaderboard.ts`, `trend-row.tsx`,
+   `garden-leaderboard-screen.tsx`, la route, `formatDayMonth`, l'export).
+2. L'accès depuis la feuille de personnage (`podium-mark.tsx`, `raised-button.tsx`, les jetons
+   `raised`, le bouton dans `garden-level-screen.tsx`) — **basée sur la première une fois
+   mergée**, puisqu'elle pousse vers `/garden-leaderboard`.
+3. Ce handoff.
+
+### 8. À faire ensuite
+
+1. **Voir tourner sur appareil** — priorité absolue, rien de cette session n'a été vu ailleurs
+   que sur artifact web. Trois choses précises à juger (section 9).
+2. Décider si le **corail en couronne du podium** (section 4) est gardé ou redescendu d'un cran
+   — prise d'initiative de l'agent, pas explicitement demandée.
+3. Toujours en attente : retirer les **outils dev** et les **mocks** (seed, `friends.ts`, clé
+   `…v3`) avec la vraie source de pas — `friends.ts` s'ajoute maintenant à cette liste.
+4. **Asset `profile-poppy.png` = 2,47 Mo** (rappel de la session (5), jamais traité).
+
+### 9. À juger sur appareil (rien vu tourner cette session)
+
+- **La barre épinglée** — le point le plus exposé : le calcul par arithmétique (`listTop + rank
+  × ROW_H`) plutôt que par mesure, le seuil d'apparition/disparition, le glissement 160 ms.
+- **Le bouton en relief** — la profondeur du `seat` (l'ombre basse, ce qui décide si la face est
+  bombée ou juste posée), et si le bouton lit trop soutenu par rapport au papier une fois en
+  vrai lumière d'écran plutôt qu'en aperçu web.
+- **L'ombre interne floue de la crête** sur Android en particulier — jamais vue rendre en vrai,
+  seulement en CSS ; c'est un pari raisonnable (le `boxShadow` de la barre d'XP tourne déjà là),
+  pas une certitude.
+- Le point creux à 5 px dans `TrendRow` sur le crème.
+
+### Suggested skills
+
+- **`animate-expo`** — pour juger le relief/pression du bouton et l'épinglage au doigt.
+- **`apple-design`** — le podium et le relief empruntent la grammaire déjà établie (barre d'XP,
+  level-up) plutôt que d'en inventer une nouvelle ; utile pour vérifier que l'emprunt tient.
+- **`ui-review`** / **`emil-design-eng`** — pour la passe de jugement une fois sur appareil.
+- ⚠️ **Ne pas** invoquer `animations` / `improve-animations` / `review-animations` : orientés
+  web (CSS, Framer Motion), inutiles ici.
+
+### Rappels d'environnement
+
+- Expo **SDK 54**, RN 0.81.5, Reanimated **4.1.6**, Gesture Handler 2.28,
+  `react-native-worklets` 0.7.2, `expo-blur` 15, `expo-haptics` 15. **Rien à installer.**
+- Commandes : `pnpm --filter mobile type-check`, `pnpm --filter mobile lint`,
+  `pnpm exec expo export --platform ios` (depuis `apps/mobile`).
+- **Pas de trailer `Co-Authored-By` / `Claude-Session`** dans les commits de ce repo.
+- L'utilisateur délègue push/PR/merge, et attend un **découpage en plusieurs PR** quand les
+  sujets sont distincts.
+
+---
+
 ## Session 2026-08-29 (5) — finition du zoom, **marche entre les jours**, **haptique du compteur**, et une chasse au bug **sur Android physique**
 
 **Date :** 2026-08-29 · **Repo :** `/Users/thomas/Documents/dev/molio`
