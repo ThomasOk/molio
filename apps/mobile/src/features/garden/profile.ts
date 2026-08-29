@@ -13,10 +13,11 @@ export type Profile = {
   flower: Hue;
   /**
    * The hand-painted portrait — a watercolour flower matching the garden's
-   * frames. When set, it replaces the vector flower on the home portrait and the
-   * level screen. Leave `null` to fall back to the recolourable `FlowerAvatar`
-   * (still used by leaderboard rows). To turn it on, drop the PNG at
-   * `assets/profile-poppy.png` and uncomment the `require` below.
+   * frames. When set, it replaces the vector flower on the home portrait and
+   * the level screen. Leave `null` to fall back to the recolourable
+   * `FlowerAvatar`. One painting for now; more are coming, at which point this
+   * becomes a choice of several rather than a single asset, with a picker to
+   * choose among them.
    */
   avatar: number | null;
 };

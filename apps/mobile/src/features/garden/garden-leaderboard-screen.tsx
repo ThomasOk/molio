@@ -2,6 +2,7 @@ import type { LayoutChangeEvent, StyleProp, ViewStyle } from 'react-native';
 import type { AnimatedStyle } from 'react-native-reanimated';
 import type { Standing } from './leaderboard';
 import type { GardenPalette } from './palette';
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as React from 'react';
@@ -20,13 +21,22 @@ import { strideFonts } from '@/lib/theme';
 import { formatSteps } from './bloom';
 import { formatDayMonth } from './calendar';
 import { FlowerAvatar } from './components/flower-avatar';
-import { ProfileFlower } from './components/profile-flower';
 import { TrendRow } from './components/trend-row';
 import { buildStandings } from './leaderboard';
 import { GARDEN_PAPER, gardenPalettes } from './palette';
 import { useDayHistory } from './use-day-history';
 
 const SCREEN_PADDING = 20;
+
+/**
+ * Every row's portrait, mocked friends included — one shared painting until
+ * there are several to choose from (see `PROFILE.avatar`'s doc comment) and a
+ * picker exists. It measurably beat `FlowerAvatar` here: a dozen rows of
+ * hand-drawn SVG petals (~11 shapes apiece) cost enough paint time on Android
+ * hardware to show up as a delay opening the screen, invisible in the
+ * simulator. Rank and name already carry a row's identity without the colour.
+ */
+const ROW_AVATAR = require('./assets/profile-poppy.png') as number;
 /**
  * Every row is exactly this tall — the portrait (42) plus its breathing room.
  * Pinned rather than left to the text, because the pinned bar finds my row by
@@ -46,7 +56,8 @@ const PIN_MS = 160;
  * One row each: the portrait, the name, today's steps, and the week behind it as
  * tier squares. The squares are the SHARED ramp (`palette.tiers`), the same one
  * the heatmap paints with, which is what makes two rows comparable at a glance —
- * so identity moves to the flower, which `FlowerAvatar` recolours for free.
+ * identity is carried by rank and name instead, since every portrait is
+ * currently the same shared painting (see `ROW_AVATAR`'s doc comment).
  *
  * The friends are mocked (`friends.ts`); my own row is not — it reads the real
  * day history, so a sync on the home screen moves me up the board.
@@ -232,9 +243,26 @@ function StandingRow({
         {rank}
       </Text>
 
-      {standing.isMe
-        ? <ProfileFlower size={AVATAR} palette={palette} />
-        : <FlowerAvatar hue={standing.flower} size={AVATAR} palette={palette} />}
+      <View style={styles.avatar}>
+        <Image
+          source={ROW_AVATAR}
+          contentFit="cover"
+          style={{
+            width: AVATAR,
+            height: AVATAR,
+            borderRadius: AVATAR / 2,
+            borderWidth: Math.max(1.5, AVATAR * 0.04),
+            borderColor: palette.cardBorder,
+          }}
+        />
+        {/* Same badge as the level screen's portrait (`palette.ring` ring,
+            paper-coloured seam), sized down for a row instead of the big
+            character-sheet avatar — and fed the SAME formula, just today's
+            steps in place of the running total nobody mocks per friend. */}
+        <View style={[styles.levelBadge, { backgroundColor: palette.ring, borderColor: GARDEN_PAPER }]}>
+          <Text style={styles.levelBadgeText}>{standing.level}</Text>
+        </View>
+      </View>
 
       <View style={styles.who}>
         <Text numberOfLines={1} style={[styles.name, { color: palette.ink }]}>
@@ -242,7 +270,7 @@ function StandingRow({
           {standing.isMe && <Text style={[styles.you, { color: palette.inkSoft }]}>  VOUS</Text>}
         </Text>
         <Text style={[styles.steps, { color: palette.label }]}>
-          {standing.steps === 0 ? 'Aucun pas' : `${formatSteps(standing.steps)} pas`}
+          {formatSteps(standing.steps)}
         </Text>
       </View>
 
@@ -358,6 +386,30 @@ const styles = StyleSheet.create({
     fontFamily: strideFonts.semibold,
     fontSize: 13,
     lineHeight: 17,
+    fontVariant: ['tabular-nums'],
+  },
+  // `alignItems: 'center'` centres the badge horizontally on the unconstrained
+  // axis, same trick the level screen's portrait uses for its own badge.
+  avatar: {
+    width: AVATAR,
+    height: AVATAR,
+    alignItems: 'center',
+  },
+  levelBadge: {
+    position: 'absolute',
+    bottom: -4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  levelBadgeText: {
+    fontFamily: strideFonts.black,
+    fontSize: 9,
+    lineHeight: 11,
+    color: '#FFFFFF',
     fontVariant: ['tabular-nums'],
   },
   who: {

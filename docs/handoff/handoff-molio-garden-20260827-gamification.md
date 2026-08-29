@@ -5,6 +5,135 @@
 
 ---
 
+## Session 2026-08-30 — écran Classement : chasse au délai **sur Android physique**, avatars PNG partagés, badge de niveau, haptique corrigé
+
+**Date :** 2026-08-30 · **Repo :** `/Users/thomas/Documents/dev/molio`
+**Branche :** à créer (voir section 8) · **État git :** committé par cette session juste après ce
+handoff, **en une seule PR** — flux explicitement demandé par l'utilisateur cette fois
+(commit → push → PR → merge), pas de découpage en plusieurs PR.
+**À lire d'abord :** la session 2026-08-29 (6) ci-dessous — celle-ci corrige et complète le
+classement qu'elle vient de livrer, à partir d'un premier test sur appareil réel.
+
+Session de mise au point entièrement partie d'un test sur Android physique — la toute première
+fois que le classement tourne ailleurs qu'en artifact web ou simulateur iOS.
+
+### 1. Bug bloquant : "This screen doesn't exist" sur Android physique, jamais sur iOS
+Le bouton "Voir le classement" atterrissait sur le catch-all `[...messing].tsx` du template
+obytes. Fichier de route, enregistrement dans `_layout.tsx`, `router.push` : identiques à ce qui
+marche sur iOS — **pas un bug de code**. Cause : cache Metro périmé (la table de routes par
+plateforme n'avait pas été régénérée côté Android après l'ajout de la route la veille). Un reload
+JS et un redémarrage complet de l'app n'ont pas suffi ; **`pnpm start -c` (cache vidé) puis
+relance de l'app** a réglé le problème. À retenir : sur un "route introuvable" qui ne touche
+qu'une seule plateforme, vider le cache Metro avant de chercher plus loin dans le code.
+
+### 2. Le vrai délai restant : ~132 formes SVG montées d'un coup, coûteux sur Android seulement
+Une fois l'écran accessible, léger délai à l'ouverture — jamais vu sur simulateur iOS.
+**Hypothèse fausse testée en premier** : le PNG `profile-poppy.png` (déjà repéré comme lourd,
+2,47 Mo). Retiré du profil (`avatar: null`) pour tester — le délai a persisté, hypothèse écartée.
+**Vraie cause**, confirmée par élimination en deux temps (rond plat à la place des avatars → délai
+disparaît ; PNG partagé sur les 12 lignes → délai disparaît aussi) : chaque `FlowerAvatar` dessine
+11 primitives SVG, et le classement en montait 12 d'un coup (~132 formes) **pendant la transition
+de navigation** — le même mécanisme déjà découvert en session (5) pour le toast Android (le budget
+de frames est déjà pris pendant une transition, donc tout travail de rendu un peu lourd qui y
+tombe se voit sur Android, jamais sur un simulateur iOS qui tourne sur du matériel de Mac).
+
+### 3. Décision qui suit : avatars **PNG partagés**, pas de retour au SVG
+L'utilisateur compte générer plusieurs peintures de fleurs et laisser le choix à l'utilisateur
+final plus tard (un sélecteur — évoqué, pas fait). En attendant : **tout le monde dans le
+classement affiche `profile-poppy.png`** (`ROW_AVATAR`, un `require` dédié dans l'écran, commenté
+sur place avec le raisonnement de la section 2) — l'identité d'une ligne repose sur le rang et le
+nom, comme déjà admis pour les teintes `FlowerAvatar` qui se répétaient. Le profil (accueil +
+écran Niveau) revient au même asset via `PROFILE.avatar`, remis à sa valeur d'origine après le
+test à `null`.
+- ⚠️ **`profile-poppy.png` reste à 2,47 Mo / 1254×1254**, non redimensionné — 3ᵉ mention
+  consécutive dans les handoffs. Il n'est plus soupçonné dans ce délai précis (le SVG est
+  confirmé), mais reste un poids mort au décodage.
+
+### 4. Badge de niveau sur chaque ligne (`leaderboard.ts`, `garden-leaderboard-screen.tsx`)
+Demande explicite. **Même formule** que l'écran Niveau — `Math.floor(steps / STEPS_PER_LEVEL)` —
+appliquée au pas du jour déjà présent dans `Standing` : pas de donnée supplémentaire à mocker par
+ami, le niveau du jour découle directement du même chiffre qui sert déjà au classement. Visuel :
+même recette que le badge du grand portrait (anneau `palette.ring`, liseré couleur papier),
+réduite à 18 px (contre 34 sur l'écran Niveau) ; centré horizontalement par l'`alignItems:
+'center'` du parent plutôt que par un calcul de position — le même tour que l'original.
+
+### 5. Texte "pas" retiré des lignes
+`formatSteps(standing.steps)` seul, y compris à 0 (`"0"`) — demande explicite ; fini le
+"Aucun pas".
+
+### 6. Haptique sur le bouton "Voir le classement" (`components/raised-button.tsx`)
+Demande explicite, après une question de l'agent sur la pertinence d'un haptique généralisé à
+tous les boutons — **refusé pour les autres** (retour, entrées de la Home) : dans ce repo le
+haptique marque déjà un événement qui se produit (une sélection, un passage de niveau, un sync),
+jamais une navigation qu'on déclenche ; en généraliser aurait dilué le signal. Le bouton en relief
+reste la seule exception, étant le seul construit autour d'une métaphore physique assez forte
+pour la justifier.
+- 🐛 **Premier essai muet sur Android physique**, signalé par l'utilisateur : `Haptics.impactAsync
+  (Light)` ne rend quasiment rien sur ce moteur de vibration, alors que `Haptics.selectionAsync()`
+  — déjà utilisé partout ailleurs dans l'app (grille, zoom mois/jour, pull-to-sync) — passe bien
+  sur le même appareil. `impactAsync` pilote le moteur avec une amplitude/durée brute que beaucoup
+  d'OEM Android rendent faible ou pas du tout en "Light" ; `selectionAsync` s'appuie sur un tick
+  système standard que tous les Android savent jouer. Corrigé en basculant sur `selectionAsync`,
+  posé au même instant que le début de l'enfoncement visuel (`onPressIn`).
+
+### 7. Décisions utilisateur — ne pas relitiger
+- Cache Metro périmé ≠ bug de code — réflexe `pnpm start -c` avant de creuser plus loin sur un
+  "route introuvable" propre à une seule plateforme.
+- Avatars du classement (et du profil) = **PNG partagé**, pas de retour au `FlowerAvatar`
+  vectoriel — en attente de plusieurs peintures + un sélecteur.
+- Badge de niveau sur chaque ligne, même formule que l'écran Niveau.
+- Texte "pas" retiré, le nombre seul suffit.
+- Haptique = **seulement** sur le bouton "Voir le classement" ; tous les autres boutons restent
+  silencieux, à dessein.
+- Haptique = `selectionAsync`, pas `impactAsync`, au moins tant que ce dernier n'est pas revérifié
+  ailleurs sur du matériel Android.
+
+### 8. Fichiers de la session
+Modifiés (`apps/mobile/src/features/garden/`) : `profile.ts` (avatar restauré après le test),
+`leaderboard.ts` (champ `level`), `garden-leaderboard-screen.tsx` (avatars PNG, badge de niveau,
+texte des pas), `components/raised-button.tsx` (haptique). Aucun fichier de route touché — le
+bug Android était un cache, pas du code.
+Committé par cette session juste après ce handoff, **en une seule PR** (flux explicitement
+demandé par l'utilisateur cette fois, pas de découpage malgré des sujets distincts).
+
+### 9. À faire ensuite
+1. **Redimensionner `profile-poppy.png`** (2,47 Mo, 1254×1254) — 3ᵉ session consécutive à le
+   signaler sans le faire.
+2. **Générer plusieurs peintures de fleurs + un sélecteur**, pour que le profil (et à terme les
+   amis) choisissent parmi plusieurs images plutôt qu'une seule partagée — évoqué par
+   l'utilisateur, pas encore de ticket ni de design.
+3. Toujours en attente : retirer les **outils dev** et les **mocks** (seed, `friends.ts`, clé
+   `…v3`) avec la vraie source de pas.
+4. Voir tourner sur appareil ce qui restait en attente de la session (6) : la barre épinglée du
+   classement, la profondeur du bouton en relief maintenant que le haptique est branché, l'ombre
+   interne floue de la crête sur Android, le point creux de `TrendRow`.
+
+### 10. À juger sur appareil
+Le badge de niveau à 18 px (lisibilité à deux chiffres, ex. "14"), maintenant que le classement
+tourne pour de vrai sur Android.
+
+### Suggested skills
+- **`animate-expo`** — pour juger le haptique/relief du bouton une fois branché correctement.
+- **`ui-review`** / **`emil-design-eng`** — passe de jugement sur le badge de niveau et les
+  avatars PNG partagés.
+- ⚠️ **Ne pas** invoquer `animations` / `improve-animations` / `review-animations` : orientés
+  web (CSS, Framer Motion), inutiles ici.
+
+### Rappels d'environnement
+
+- Expo **SDK 54**, RN 0.81.5, Reanimated **4.1.6**, Gesture Handler 2.28,
+  `react-native-worklets` 0.7.2, `expo-blur` 15, `expo-haptics` 15. **Rien à installer.**
+- Commandes : `pnpm --filter mobile type-check`, `pnpm --filter mobile lint`,
+  `pnpm exec expo export --platform ios` (depuis `apps/mobile`). Sur Android, en cas de "route
+  introuvable" propre à une plateforme : `pnpm start -c` avant de creuser plus loin.
+- **Pas de trailer `Co-Authored-By` / `Claude-Session`** dans les commits de ce repo.
+- Cette session : l'utilisateur a explicitement demandé un flux **commit → push → PR → merge** en
+  une seule fois, sans découpage — à ne pas prendre comme la nouvelle règle par défaut, la
+  préférence habituelle (découpage en plusieurs PR quand les sujets sont distincts) reste celle
+  des sessions précédentes.
+
+---
+
 ## Session 2026-08-29 (6) — **écran Classement du jour** (fausses données), accès depuis la feuille de personnage, bouton en relief
 
 **Date :** 2026-08-29 · **Repo :** `/Users/thomas/Documents/dev/molio`

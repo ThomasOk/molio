@@ -1,4 +1,5 @@
 import type { GardenPalette } from '../palette';
+import * as Haptics from 'expo-haptics';
 import * as React from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 import Animated, {
@@ -35,6 +36,19 @@ const PRESS_OUT_MS = 220;
  * the face sinks and dims, quickly down and slowly back — never a bounce, which
  * this app has ruled out everywhere. Under reduced motion the scale drops out
  * and only the dimming remains, so the press still answers.
+ *
+ * A haptic lands on contact, alongside the dip — the one button in the app
+ * built around a physical metaphor strong enough to earn it. Every other
+ * button (back arrows, the leaderboard link that came before this one) stays
+ * silent on purpose; a buzz on routine navigation is noise, not feedback.
+ *
+ * `selectionAsync`, not `impactAsync(Light)` — tried on physical Android
+ * hardware first and it was near-silent, while `selectionAsync` is what
+ * every other haptic in this app already uses (the grid, the month/day zoom,
+ * pull-to-sync) and it renders fine there. `impactAsync` drives the motor
+ * with a raw amplitude/duration that a lot of Android OEMs render weak or not
+ * at all at "Light"; `selectionAsync` rides a standard system tick
+ * (`HapticFeedbackConstants`) every Android vibrator knows how to play.
  */
 export function RaisedButton({
   palette,
@@ -62,8 +76,13 @@ export function RaisedButton({
       accessibilityLabel={accessibilityLabel}
       hitSlop={12}
       onPress={onPress}
-      onPressIn={() =>
-        press.set(withTiming(1, { duration: PRESS_IN_MS, easing: Easing.out(Easing.quad) }))}
+      onPressIn={() => {
+        // Fired on contact, same moment the face starts sinking — the finger
+        // is already there, so the buzz and the dip land together instead of
+        // trailing the touch.
+        Haptics.selectionAsync();
+        press.set(withTiming(1, { duration: PRESS_IN_MS, easing: Easing.out(Easing.quad) }));
+      }}
       onPressOut={() =>
         press.set(withTiming(0, { duration: PRESS_OUT_MS, easing: Easing.out(Easing.cubic) }))}
     >
