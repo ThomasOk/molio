@@ -88,6 +88,10 @@ export default function RootLayout() {
           options={{ headerShown: false, contentStyle: { backgroundColor: GARDEN_PAPER } }}
         />
         <Stack.Screen
+          name="garden-leaderboard"
+          options={{ headerShown: false, contentStyle: { backgroundColor: GARDEN_PAPER } }}
+        />
+        <Stack.Screen
           name="garden-level"
           options={{ headerShown: false, contentStyle: { backgroundColor: GARDEN_PAPER } }}
         />
