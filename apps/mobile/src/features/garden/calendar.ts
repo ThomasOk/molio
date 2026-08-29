@@ -106,6 +106,21 @@ export function formatMonthTitle(month: Date): string {
   return `${MONTHS_LONG[month.getMonth()]} ${month.getFullYear()}`;
 }
 
+/**
+ * "mercredi 12 août" — the leaderboard's subtitle.
+ *
+ * No year: the board is about today, and a year on it would read as an archive
+ * you could page back through, which it is not.
+ */
+export function formatDayMonth(date: Date): string {
+  const day = date.getDate();
+  return [
+    WEEKDAYS_LONG[weekdayIndex(date)],
+    day === 1 ? '1er' : String(day),
+    MONTHS_LONG[date.getMonth()],
+  ].join(' ');
+}
+
 /** "mercredi 12 août 2026" — the day detail's headline. */
 export function formatLongDate(date: Date): string {
   const day = date.getDate();
