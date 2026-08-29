@@ -1,7 +1,7 @@
 import type { TextStyle, ViewStyle } from 'react-native';
 import type { SharedValue } from 'react-native-reanimated';
 import type { GardenPalette } from './palette';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as React from 'react';
 import { Pressable, Text, useWindowDimensions, View } from 'react-native';
@@ -50,6 +50,9 @@ const UPTODATE_MS = 1400;
 function useSyncPhase(refreshing: boolean, lastDelta: number | null): SyncPhase {
   const [uptodate, setUptodate] = React.useState(false);
   const wasRefreshingRef = React.useRef(false);
+  // The id of the sync toast currently on screen, so we can dismiss it — and only
+  // it, not the level screen's own toast — when the home loses focus.
+  const toastIdRef = React.useRef<string | number | undefined>(undefined);
 
   React.useEffect(() => {
     const justFinished = wasRefreshingRef.current && !refreshing;
@@ -57,13 +60,13 @@ function useSyncPhase(refreshing: boolean, lastDelta: number | null): SyncPhase 
     if (!justFinished)
       return;
     if (lastDelta && lastDelta > 0) {
-      toast.custom(
+      toastIdRef.current = toast.custom(
         <GlassToast title={`+${formatSteps(lastDelta)} pas synchronisés`} />,
         { position: 'center' },
       );
       return;
     }
-    toast.custom(<GlassToast title="Déjà à jour" />, { position: 'center' });
+    toastIdRef.current = toast.custom(<GlassToast title="Déjà à jour" />, { position: 'center' });
     // Set only from timers so the effect never triggers a synchronous render.
     const show = setTimeout(setUptodate, 0, true);
     const hide = setTimeout(setUptodate, UPTODATE_MS, false);
@@ -72,6 +75,19 @@ function useSyncPhase(refreshing: boolean, lastDelta: number | null): SyncPhase 
       clearTimeout(hide);
     };
   }, [refreshing, lastDelta]);
+
+  // A center toast lingers ~4s on its own; if the user taps through to another
+  // screen before then, dismiss it on blur so it never floats over that screen.
+  useFocusEffect(
+    React.useCallback(() => {
+      return () => {
+        if (toastIdRef.current !== undefined) {
+          toast.dismiss(toastIdRef.current);
+          toastIdRef.current = undefined;
+        }
+      };
+    }, []),
+  );
 
   return refreshing ? 'syncing' : uptodate ? 'uptodate' : 'idle';
 }

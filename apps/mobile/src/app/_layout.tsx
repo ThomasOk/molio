@@ -12,6 +12,7 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { Toaster } from 'sonner-native';
 import { useThemeConfig } from '@/components/ui/use-theme-config';
 import { hydrateAuth } from '@/features/auth/use-auth-store';
+import { GARDEN_PAPER } from '@/features/garden/palette';
 import { hydrateDayHistory } from '@/features/garden/use-day-history';
 
 import { APIProvider } from '@/lib/api';
@@ -69,11 +70,31 @@ export default function RootLayout() {
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />
         {/* The botanical home, and its test bench — both reachable from Home
-            in dev. */}
-        <Stack.Screen name="garden" options={{ headerShown: false }} />
-        <Stack.Screen name="garden-lab" options={{ headerShown: false }} />
-        <Stack.Screen name="garden-level" options={{ headerShown: false }} />
-        <Stack.Screen name="garden-stats" options={{ headerShown: false }} />
+            in dev.
+
+            They carry `contentStyle` as well as painting their own paper: the
+            navigator's own screen background comes from the React Navigation
+            theme (white when light, #121212 when dark), and while a screen
+            animates in it is briefly translucent — enough for that background
+            to tint the cream, which on a dark-themed device reads as the new
+            screen arriving dimmed. Handing the navigator the same paper means
+            there is nothing behind to show through. */}
+        <Stack.Screen
+          name="garden"
+          options={{ headerShown: false, contentStyle: { backgroundColor: GARDEN_PAPER } }}
+        />
+        <Stack.Screen
+          name="garden-lab"
+          options={{ headerShown: false, contentStyle: { backgroundColor: GARDEN_PAPER } }}
+        />
+        <Stack.Screen
+          name="garden-level"
+          options={{ headerShown: false, contentStyle: { backgroundColor: GARDEN_PAPER } }}
+        />
+        <Stack.Screen
+          name="garden-stats"
+          options={{ headerShown: false, contentStyle: { backgroundColor: GARDEN_PAPER } }}
+        />
       </Stack>
     </Providers>
   );
