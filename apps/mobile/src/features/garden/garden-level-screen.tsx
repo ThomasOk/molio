@@ -23,7 +23,9 @@ import { toast } from 'sonner-native';
 import { strideFonts } from '@/lib/theme';
 import { clamp, formatSteps, MAX_LEVEL, MAX_STEPS, STEPS_PER_LEVEL } from './bloom';
 import { GlassToast } from './components/glass-toast';
+import { PodiumMark } from './components/podium-mark';
 import { ProfileFlower } from './components/profile-flower';
+import { RaisedButton } from './components/raised-button';
 import { getLastSeenSteps, setLastSeenSteps } from './level-progress';
 import { GARDEN_PAPER, gardenPalettes } from './palette';
 import { PROFILE } from './profile';
@@ -171,6 +173,41 @@ export function GardenLevelScreen() {
           {' pas aujourd’hui'}
         </Text>
       </View>
+
+      <LeaderboardLink palette={palette} />
+    </View>
+  );
+}
+
+/**
+ * The way into the day's leaderboard.
+ *
+ * Deliberately says nothing about where you place. This screen is where a
+ * level-up lands, and a rank printed on it would meet that moment with a
+ * verdict; a standing you went looking for is not the same object as one that
+ * was put in front of you. So it is a door, not a readout.
+ *
+ * A raised button rather than a flat card, and sized to its content rather than
+ * stretched across the screen — a full-width bar would read as a footer the
+ * sheet has to sit above. It hangs off the bottom edge instead of joining the
+ * centred block, which leaves the portrait's framing exactly where it was tuned.
+ *
+ * No chevron: on a link the arrow was the only thing saying "tappable". A face
+ * that stands off the paper and sinks under a finger says it far better, and two
+ * signs for one job is one too many.
+ */
+function LeaderboardLink({ palette }: { palette: GardenPalette }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={[styles.boardSlot, { bottom: insets.bottom + 16 }]}>
+      <RaisedButton
+        palette={palette}
+        accessibilityLabel="Voir le classement du jour"
+        onPress={() => router.push('/garden-leaderboard')}
+      >
+        <PodiumMark size={24} palette={palette} />
+        <Text style={[styles.boardLabel, { color: palette.ink }]}>Voir le classement</Text>
+      </RaisedButton>
     </View>
   );
 }
@@ -421,5 +458,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     textAlign: 'center',
+  },
+  boardSlot: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  boardLabel: {
+    fontFamily: strideFonts.semibold,
+    fontSize: 15,
+    lineHeight: 20,
   },
 });

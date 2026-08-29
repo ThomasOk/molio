@@ -80,6 +80,33 @@ export type GardenPalette = {
     glow: string;
   };
   /**
+   * A surface that sits ON the paper rather than in it — the raised button.
+   *
+   * The XP bar's grammar turned inside out: there the coral is sunk into a
+   * groove, here the same ingredients lift a face off the page. `face` is a
+   * cream a shade deeper than the paper, so the `gloss` over its top reads as a
+   * curved highlight instead of vanishing; `seat` is an inset shadow along the
+   * bottom edge, which is what rounds the face over rather than leaving it a
+   * flat plate; `bezel` rings it, and `shadow` drops beneath.
+   *
+   * `gloss` is spent as a BLURRED INSET SHADOW, never as a painted layer. The XP
+   * bar can get away with a solid white view over its top 40% because the bar is
+   * 14 px tall and the view's bottom edge lands within a couple of pixels of the
+   * crest. Scale that same layer to a 46 px button and the edge falls across the
+   * middle of the face as a visible seam — light on a curve has no edge, so the
+   * highlight has to fade out rather than stop.
+   *
+   * Deliberately not tinted: the accent on this button is its icon, and the XP
+   * bar right above it already owns the screen's coral.
+   */
+  raised: {
+    face: string;
+    gloss: string;
+    bezel: string;
+    seat: string;
+    shadow: string;
+  };
+  /**
    * The sync interaction's tint — pull-to-sync charge and the working sweep.
    *
    * The garden's own ink, never a foreign hue: the effect is glass, not colour.
@@ -123,6 +150,13 @@ const LIGHT: GardenPalette = {
     fillBottom: '#E86A44',
     gloss: 'rgba(255, 255, 255, 0.55)',
     glow: 'rgba(232, 106, 68, 0.45)',
+  },
+  raised: {
+    face: '#F2E9D8',
+    gloss: 'rgba(255, 255, 255, 0.85)',
+    bezel: '#FFFFFF',
+    seat: 'rgba(92, 68, 34, 0.18)',
+    shadow: 'rgba(92, 68, 34, 0.20)',
   },
   ringSync: '#9E5F46',
   haze: '#9DBE72',
@@ -175,6 +209,13 @@ const DARK: GardenPalette = {
     fillBottom: '#C96A4C',
     gloss: 'rgba(255, 255, 255, 0.38)',
     glow: 'rgba(201, 106, 76, 0.5)',
+  },
+  raised: {
+    face: '#1E2A22',
+    gloss: 'rgba(255, 255, 255, 0.10)',
+    bezel: '#2E3D34',
+    seat: 'rgba(0, 0, 0, 0.45)',
+    shadow: 'rgba(0, 0, 0, 0.5)',
   },
   ringSync: '#BD7D64',
   haze: '#24402C',
