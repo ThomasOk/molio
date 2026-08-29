@@ -1,4 +1,5 @@
 import type { SharedValue } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import * as React from 'react';
 import {
   cancelAnimation,
@@ -78,6 +79,60 @@ function useLoopClock(enabled: boolean, loopMs: number) {
   return clock;
 }
 
+/**
+ * How many haptic pulses one count-up delivers — fixed, not one per N steps.
+ *
+ * The counter's own duration is deliberately delta-independent (see
+ * `counterDuration`): a 400-step sync and a 3200-step one both take exactly
+ * COUNTER_MS, so a fixed number of pulses per sync keeps the haptic rhythm
+ * that same kind of constant — every sync feels like the same reel spinning
+ * up and settling, only covering a different distance. Spaced by FRACTION of
+ * the leg rather than by raw step count, the pulses ride `EASE_BLOOM` for
+ * free: sparse at the start and the settle, dense through the middle, exactly
+ * where the digits are visibly moving fastest.
+ */
+const COUNTER_TICKS = 16;
+
+/**
+ * A light tick for every notch the counter passes as it counts up — the
+ * pull-to-sync animation asks to be felt, not just watched.
+ *
+ * `arm` marks where the current leg starts and how far it runs; call it right
+ * before sending `counter` to its new target. The reaction below turns the
+ * counter's raw value back into "how far through THIS leg" and fires once per
+ * notch. Because the notch index only ever counts up when `counter` is rising,
+ * `reset()`'s count-DOWN passes back through the same notches without a single
+ * pulse — nothing here has to know it is a reset, the direction alone excludes
+ * it.
+ */
+function useCounterTicks(counter: SharedValue<number>) {
+  const from = useSharedValue(0);
+  const span = useSharedValue(0);
+
+  const arm = React.useCallback(
+    (target: number) => {
+      from.set(counter.get());
+      span.set(target - counter.get());
+    },
+    [counter, from, span],
+  );
+
+  useAnimatedReaction(
+    () => {
+      const s = span.get();
+      if (s === 0)
+        return -1;
+      return Math.floor(clamp((counter.get() - from.get()) / s, 0, 1) * COUNTER_TICKS);
+    },
+    (next, previous) => {
+      if (previous !== null && next > previous)
+        scheduleOnRN(Haptics.selectionAsync);
+    },
+  );
+
+  return arm;
+}
+
 /** How long the fake Health sync spins before it returns a delta. */
 const SYNC_MS = 1000;
 
@@ -119,14 +174,12 @@ export function useBloomLab() {
   const bloom = useDerivedValue(() => bloomFromProgress(progress.get()));
   const abundance = useDerivedValue(() => abundanceFromProgress(progress.get()));
   const clock = useLoopClock(motion, SWAY_LOOP_MS);
+  const armCounterTicks = useCounterTicks(counter);
 
-  React.useEffect(
-    () => () => {
-      if (syncTimerRef.current)
-        clearTimeout(syncTimerRef.current);
-    },
-    [],
-  );
+  React.useEffect(() => () => {
+    if (syncTimerRef.current)
+      clearTimeout(syncTimerRef.current);
+  }, []);
 
   // The band label changes six times across the whole range, not 120 times a
   // second. The comparison runs on the UI thread every frame; the hop back to
@@ -158,10 +211,11 @@ export function useBloomLab() {
         return;
 
       const fraction = target / MAX_STEPS;
+      armCounterTicks(fraction);
       bloomTo(counter, fraction, counterDuration(delta));
       bloomTo(progress, fraction, gardenDuration(delta));
     },
-    [counter, progress],
+    [counter, progress, armCounterTicks],
   );
 
   // Dev scrubber only — note where it left, no day-history write (not real steps).
