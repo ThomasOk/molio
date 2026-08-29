@@ -272,3 +272,20 @@ export function shiftHue(color: string, amount: number): string {
  * repainted. ADR 0001, amendment 2026-08-25.
  */
 export const GARDEN_PAPER = '#FAF4E8';
+
+/**
+ * Text that has to sit ON a tier colour — the day detail, whose whole
+ * background is the cell's own tier.
+ *
+ * The ramp climbs in darkness by design, so there is a clean split: the top two
+ * tiers (deep green, deep coral) carry the paper's cream, everything below
+ * keeps the garden's ink.
+ */
+export function inkOnTier(
+  tier: number,
+  palette: GardenPalette,
+): { ink: string; soft: string } {
+  if (tier >= 3)
+    return { ink: GARDEN_PAPER, soft: 'rgba(250, 244, 232, 0.75)' };
+  return { ink: palette.ink, soft: palette.inkSoft };
+}

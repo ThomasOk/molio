@@ -1,13 +1,28 @@
+import type { AnimatedRef } from 'react-native-reanimated';
+import type { ExpandOrigin } from './components/expansion';
 import type { GardenPalette } from './palette';
+import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { measure, useAnimatedRef } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { scheduleOnRN } from 'react-native-worklets';
 
 import { strideFonts } from '@/lib/theme';
 import { formatSteps, tierForDay } from './bloom';
+import {
+  mondayOf,
+  MONTHS_SHORT,
+  shiftDays,
+  startOfDay,
+  startOfMonth,
+  WEEKDAY_LETTERS,
+} from './calendar';
 import { FlowerAvatar } from './components/flower-avatar';
+import { MonthZoom } from './components/month-zoom';
 import { TierSquares } from './components/tier-squares';
 import { GARDEN_PAPER, gardenPalettes } from './palette';
 import { dayKey, useDayHistory } from './use-day-history';
@@ -25,52 +40,8 @@ const SCREEN_PADDING = 20;
 const MONTH_ROW_H = 16;
 const MONTH_ROW_MB = 6;
 
-/** Short month names (FR), matching the mock's "jan fév mar…". */
-const MONTHS_SHORT = [
-  'jan',
-  'fév',
-  'mar',
-  'avr',
-  'mai',
-  'juin',
-  'juil',
-  'août',
-  'sep',
-  'oct',
-  'nov',
-  'déc',
-];
-/** Monday → Sunday, every day labelled (L M M J V S D). */
-const WEEKDAYS = [
-  { id: 'mon', letter: 'L' },
-  { id: 'tue', letter: 'M' },
-  { id: 'wed', letter: 'M' },
-  { id: 'thu', letter: 'J' },
-  { id: 'fri', letter: 'V' },
-  { id: 'sat', letter: 'S' },
-  { id: 'sun', letter: 'D' },
-];
-
-/** A date `days` from `from`, at local midnight arithmetic. */
-function shiftDays(from: Date, days: number): Date {
-  const d = new Date(from);
-  d.setDate(d.getDate() + days);
-  return d;
-}
-
-/** The Monday on or before `date` (getDay: 0=Sun…6=Sat), at local midnight. */
-function mondayOf(date: Date): Date {
-  const since = (date.getDay() + 6) % 7;
-  const m = shiftDays(date, -since);
-  m.setHours(0, 0, 0, 0);
-  return m;
-}
-
-function startOfDay(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
+/** The cell's corner radius — the rect the month zoom grows out of. */
+const CELL_RADIUS = Math.max(2, Math.round(CELL / 5));
 
 type Grid = {
   /** Tier per cell, COLUMN-MAJOR (index c*ROWS + r) — TierSquares' order. */
@@ -88,6 +59,29 @@ type Stats = {
 /** The Monday that opens the rolling window: `WEEKS - 1` weeks before this week. */
 function windowStartFor(today: Date): Date {
   return shiftDays(mondayOf(today), -(WEEKS - 1) * 7);
+}
+
+/** The month a column belongs to — its Thursday, same ISO rule as the labels. */
+function monthOfColumn(start: Date, column: number): Date {
+  return startOfMonth(shiftDays(start, column * 7 + 3));
+}
+
+/**
+ * The columns of the window that belong to `month` — the block the month zoom
+ * unfolds from, so it grows out of exactly the weeks it is about.
+ */
+function columnsOfMonth(start: Date, month: Date): { first: number; last: number } {
+  let first = -1;
+  let last = -1;
+  for (let c = 0; c < WEEKS; c += 1) {
+    const owner = monthOfColumn(start, c);
+    if (owner.getTime() === month.getTime()) {
+      if (first < 0)
+        first = c;
+      last = c;
+    }
+  }
+  return { first: Math.max(0, first), last: Math.max(0, last) };
 }
 
 /**
@@ -176,8 +170,9 @@ export function GardenStatsScreen() {
   // Recompute only when the history or width changes — not every render. `today`
   // is captured per computation; the screen is short-lived enough not to need a
   // midnight rollover watcher.
-  const { grid, stats, scrollX } = React.useMemo(() => {
+  const { grid, stats, scrollX, window: bounds } = React.useMemo(() => {
     const today = new Date();
+    const start = windowStartFor(today);
     const visibleGrid = width - SCREEN_PADDING * 2 - GUTTER;
     const contentWidth = WEEKS * CELL_STEP - CELL_GAP;
     return {
@@ -186,8 +181,12 @@ export function GardenStatsScreen() {
       // Open on the end of the window — today sits flush against the right edge;
       // the user scrolls left to walk back through the year.
       scrollX: Math.max(0, contentWidth - visibleGrid),
+      // The months the zoom may page through: exactly the window's own span.
+      window: { start, first: monthOfColumn(start, 0), last: startOfMonth(today) },
     };
   }, [history, width]);
+
+  const { open, close, gridRef, gesture } = useMonthZoom(bounds.start);
 
   return (
     <View style={{ flex: 1, backgroundColor: GARDEN_PAPER }}>
@@ -208,43 +207,18 @@ export function GardenStatsScreen() {
         </View>
 
         <View style={styles.stats}>
-          <StatBlock value={String(stats.streak)} label="jours de série" palette={palette} />
+          <StatBlock value={String(stats.streak)} label="Série actuelle" palette={palette} />
           <View style={[styles.statDivider, { backgroundColor: palette.cardBorder }]} />
-          <StatBlock value={formatSteps(stats.best)} label="meilleur jour" palette={palette} />
+          <StatBlock value={formatSteps(stats.best)} label="Meilleur jour" palette={palette} />
         </View>
 
-        <View style={styles.gridRow}>
-          {/* Fixed weekday gutter — stays put while the grid scrolls under it. */}
-          <View style={{ width: GUTTER }}>
-            <View style={{ height: MONTH_ROW_H + MONTH_ROW_MB }} />
-            <View style={{ gap: CELL_GAP }}>
-              {WEEKDAYS.map(day => (
-                <View key={day.id} style={{ height: CELL, justifyContent: 'center' }}>
-                  <Text style={[styles.weekday, { color: palette.label }]}>{day.letter}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentOffset={{ x: scrollX, y: 0 }}
-          >
-            <View>
-              <MonthLabels labels={grid.monthLabels} palette={palette} />
-              <TierSquares
-                tiers={grid.tiers}
-                columns={grid.columns}
-                rows={ROWS}
-                size={CELL}
-                gap={CELL_GAP}
-                radius={Math.max(2, Math.round(CELL / 5))}
-                palette={palette}
-              />
-            </View>
-          </ScrollView>
-        </View>
+        <ActivityGrid
+          grid={grid}
+          palette={palette}
+          scrollX={scrollX}
+          gridRef={gridRef}
+          gesture={gesture}
+        />
 
         {/* The tier ramp, calm → active, centred — the scale at a glance. */}
         <View style={styles.legend}>
@@ -255,11 +229,133 @@ export function GardenStatsScreen() {
           <Text style={[styles.legendCap, { color: palette.label }]}>+</Text>
         </View>
       </ScrollView>
+
+      {open && (
+        <MonthZoom
+          origin={open.origin}
+          month={open.month}
+          window={{ first: bounds.first, last: bounds.last }}
+          history={history}
+          palette={palette}
+          onClose={close}
+        />
+      )}
     </View>
   );
 }
 
 // ---------------------------------------------------------------------------
+
+/**
+ * Tapping the heatmap opens the month you touched, full screen.
+ *
+ * The gesture only reports WHERE it landed — the column under the finger and
+ * the grid's rect — and all the month arithmetic stays on the JS side, so no
+ * `Date` ever has to cross into a worklet. The rect it hands the zoom is the
+ * touched month's own columns, so the calendar unfolds out of exactly the weeks
+ * it is about.
+ */
+function useMonthZoom(start: Date) {
+  const [open, setOpen] = React.useState<{ month: Date; origin: ExpandOrigin } | null>(null);
+  const gridRef = useAnimatedRef<Animated.View>();
+
+  const openAt = React.useCallback(
+    (column: number, box: { x: number; y: number; height: number }) => {
+      const month = monthOfColumn(start, Math.max(0, Math.min(column, WEEKS - 1)));
+      const span = columnsOfMonth(start, month);
+      Haptics.selectionAsync();
+      setOpen({
+        month,
+        origin: {
+          x: box.x + span.first * CELL_STEP,
+          y: box.y,
+          width: (span.last - span.first + 1) * CELL_STEP - CELL_GAP,
+          height: box.height,
+          radius: CELL_RADIUS,
+        },
+      });
+    },
+    [start],
+  );
+
+  const gesture = Gesture.Tap().onEnd((event) => {
+    const box = measure(gridRef);
+    if (!box)
+      return;
+    scheduleOnRN(openAt, Math.floor(event.x / CELL_STEP), {
+      x: box.pageX,
+      y: box.pageY,
+      height: box.height,
+    });
+  });
+
+  const close = React.useCallback(() => setOpen(null), []);
+
+  return { open, close, gridRef, gesture };
+}
+
+/** The heatmap itself: the fixed weekday gutter, then the scrolling year. */
+function ActivityGrid({
+  grid,
+  palette,
+  scrollX,
+  gridRef,
+  gesture,
+}: {
+  grid: Grid;
+  palette: GardenPalette;
+  scrollX: number;
+  gridRef: AnimatedRef<Animated.View>;
+  gesture: ReturnType<typeof Gesture.Tap>;
+}) {
+  return (
+    <View style={styles.gridRow}>
+      {/* Fixed weekday gutter — stays put while the grid scrolls under it. */}
+      <View style={{ width: GUTTER }}>
+        <View style={{ height: MONTH_ROW_H + MONTH_ROW_MB }} />
+        <View style={{ gap: CELL_GAP }}>
+          {WEEKDAY_LETTERS.map(day => (
+            <View key={day.id} style={{ height: CELL, justifyContent: 'center' }}>
+              <Text style={[styles.weekday, { color: palette.label }]}>{day.letter}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentOffset={{ x: scrollX, y: 0 }}
+      >
+        <View>
+          <MonthLabels labels={grid.monthLabels} palette={palette} />
+          {/* Tap a month's columns to unfold them into a full-screen calendar —
+              at 14 px a cell is far too small to aim at. */}
+          <GestureDetector gesture={gesture}>
+            {/* collapsable={false} keeps a backing native view on Fabric, so
+                measure() returns a rect instead of null. */}
+            <Animated.View
+              accessibilityRole="button"
+              accessibilityLabel="Ouvrir le calendrier du mois"
+              collapsable={false}
+              ref={gridRef}
+            >
+              <TierSquares
+                tiers={grid.tiers}
+                columns={grid.columns}
+                rows={ROWS}
+                size={CELL}
+                gap={CELL_GAP}
+                radius={CELL_RADIUS}
+                palette={palette}
+              />
+            </Animated.View>
+          </GestureDetector>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
 
 /** Discreet way back — no header, so the paper stays edge to edge. */
 function BackButton({ palette }: { palette: GardenPalette }) {
@@ -283,7 +379,7 @@ function BackButton({ palette }: { palette: GardenPalette }) {
   );
 }
 
-/** One summary stat — a big number over a quiet label, centred in its half. */
+/** One summary stat — a quiet label over a big number, centred in its half. */
 function StatBlock({
   value,
   label,
@@ -295,8 +391,8 @@ function StatBlock({
 }) {
   return (
     <View style={styles.statBlock}>
-      <Text style={[styles.statValue, { color: palette.ink }]}>{value}</Text>
       <Text style={[styles.statLabel, { color: palette.label }]}>{label}</Text>
+      <Text style={[styles.statValue, { color: palette.ink }]}>{value}</Text>
     </View>
   );
 }
@@ -351,22 +447,30 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
   },
-  statValue: {
-    fontFamily: strideFonts.black,
-    fontSize: 30,
-    lineHeight: 36,
-    fontVariant: ['tabular-nums'],
-  },
-  statLabel: {
-    marginTop: 4,
-    fontFamily: strideFonts.medium,
-    fontSize: 12,
-    lineHeight: 16,
-  },
   statDivider: {
     width: StyleSheet.hairlineWidth,
     alignSelf: 'stretch',
     marginVertical: 6,
+  },
+  // Letterpress: a hard 1px light shadow under the glyphs makes the text read as
+  // pressed into the paper — relief without any panel or layout change.
+  statValue: {
+    marginTop: 4,
+    fontFamily: strideFonts.black,
+    fontSize: 30,
+    lineHeight: 36,
+    fontVariant: ['tabular-nums'],
+    textShadowColor: 'rgba(255, 255, 255, 0.92)',
+    textShadowOffset: { width: 0, height: 1.5 },
+    textShadowRadius: 0,
+  },
+  statLabel: {
+    fontFamily: strideFonts.medium,
+    fontSize: 12,
+    lineHeight: 16,
+    textShadowColor: 'rgba(255, 255, 255, 0.9)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 0,
   },
   gridRow: {
     flexDirection: 'row',
