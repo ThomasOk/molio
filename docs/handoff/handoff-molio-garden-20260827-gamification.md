@@ -5,6 +5,402 @@
 
 ---
 
+## Session 2026-08-29 (5) — finition du zoom, **marche entre les jours**, **haptique du compteur**, et une chasse au bug **sur Android physique**
+
+**Date :** 2026-08-29 · **Repo :** `/Users/thomas/Documents/dev/molio`
+**Branche :** `main` · **État git :** ✅ **TOUT est committé et mergé.** Quatre PR, toutes
+sur `main` : **#12** (zoom mois/jour — absorbe le retard des sessions (3) et (4)),
+**#13** (toast de sync sur Android), **#14** (haptique du compteur), **#15** (ce handoff).
+**Le retard de commit qui traînait depuis la session (3) est donc soldé.**
+**À lire d'abord :** la session (4) ci-dessous — celle-ci la termine.
+
+**Première session vue tourner sur un vrai appareil** (Android physique + simulateur iOS).
+C'est ce qui change tout : les trois quarts de ce qui suit sont des choses qu'aucune
+vérification statique n'aurait pu trouver.
+
+### 1. Le zoom, finitions (PR #12)
+
+- **Le retour ne se « pose » plus sur la grille.** Symptôme signalé par l'utilisateur : en
+  revenant du mois vers la heatmap, un rectangle blanc venait se poser sur le mois. Cause :
+  la surface est peinte en `GARDEN_PAPER` mais atterrit sur des **cases colorées**, et son
+  contenu s'efface dès `progress < 0.35` — donc la dernière moitié de la fermeture montrait
+  une plaque crème vide, ombre portée comprise. Correctif : la surface **se dissout pendant
+  qu'elle rentre** (`fade` dans `useExpansion`, 150 ms contre ~220 ms pour le ressort), elle
+  est partie avant d'être petite. `DayZoom` n'avait pas le défaut — sa couleur est celle de
+  la tuile où elle atterrit, ce qui a servi de preuve du diagnostic.
+- 🐛 **Le bouton retour du zoom renvoyait à la Home.** Vrai bug, pas une impression. Le
+  `BackButton` de l'écran Stats est un **frère** de l'overlay et porte `zIndex: 1`, l'overlay
+  n'en portait aucun — il peignait donc **par-dessus tout le zoom** et avalait le tap. Les
+  deux boutons étaient au même pixel avec le même libellé, donc ça se lisait comme un seul.
+  Correctif : `zIndex: 2` sur l'overlay du mois.
+- **Les boutons retour nomment leur destination** (« ‹ août », « ‹ Mon activité »), à la
+  façon d'iOS. Motif : trois zooms empilés au même coin du même écran, un « Retour » partout
+  = le même mot pour trois choses. Minuscule sur le mois, pour coller au titre (« août 2026 »)
+  et à l'usage français.
+- **Correction de doc dans `expansion.ts`** : Reanimated **n'a pas de solution suramortie** —
+  passé un ratio de 1 il bascule sur la formule critique, où la vitesse dépend de
+  `stiffness/mass` **seul**. Le `damping: 24` d'`EXPAND_SPRING` ne fait donc rien de plus que
+  « pas de rebond ». Le commentaire précédent laissait croire l'inverse ; **c'est `stiffness`
+  qu'il faut bouger** pour changer le rythme (~420 ms aujourd'hui).
+
+### 2. Marche d'un jour à l'autre dans le détail (PR #12)
+
+Swipe latéral dans le détail du jour, comme entre les mois. Trois points de conception :
+
+- **L'origine suit.** `useDayPicker` garde désormais **le coin mesuré de la grille + un
+  index**, plus un rect figé : l'origine se re-dérive à chaque pas (`tileOrigin()`). Sans ça,
+  passer du 8 au 12 puis refermer aurait recontracté dans la case du **8**.
+- **La couleur se fond** (`useTierWash`, `interpolateColor`) : sans ça, passer d'un palier
+  clair à un corail faisait un flash plein écran. Sur les **mêmes 240 ms** que le glissement.
+  `ExpandingSurface.color` accepte donc `string | SharedValue<string>`.
+- **Le glissement est mutualisé** : nouveau `components/use-page-slide.ts`, utilisé par les
+  deux niveaux — les deux marches latérales ne peuvent plus diverger.
+- **Bornes : on reste dans le mois.** Le 1er et le dernier jour vécu sont des murs (le swipe
+  ne fait rien plutôt que de rejouer une animation sur place). Traverser vers le mois voisin
+  supposerait de faire glisser l'écran du dessous en même temps — écarté, le mois est à un
+  swipe vers le bas.
+
+### 3. Haptique du compteur (PR #14)
+
+Un tick léger à chaque cran que le compteur franchit **en montant**, après un pull-to-sync.
+- **16 pulsations par sync, fixes** — pas « une tous les N pas ». Motif : `counterDuration`
+  rend déjà la durée du compteur **indépendante du delta** (2 s dans tous les cas, cf. le
+  raisonnement dans `bloom.ts`) ; garder le nombre de pulsations constant prolonge la même
+  règle. Un cadencement par pas aurait fait l'inverse : bourdonnement sur un gros sync, rien
+  sur un petit.
+- Espacées **par fraction du trajet**, donc elles suivent `EASE_BLOOM` gratuitement : rares
+  aux extrémités, denses au milieu où les chiffres défilent vite.
+- **Le sens seul suffit** : les crans ne comptent qu'en montant, donc le `reset()` du bouton
+  dev redescend en silence sans qu'on ait eu à lui dire que c'est un reset.
+- Extrait en `useCounterTicks` — `useBloomLab` était déjà contre la limite de 110 lignes.
+- **Réglage : `COUNTER_TICKS = 16`**, commenté sur place dans `use-bloom-lab.ts`.
+
+### 4. Android physique : le liquid glass coûtait des frames (PR #13)
+
+**Le morceau important de la session.** Symptômes rapportés : en allant Home → Niveau pendant
+que le toast central était affiché, la transition **saccadait** et le fond du nouvel écran
+paraissait **plus sombre** ; puis le toast s'éteignait **en trois temps** (le texte partait
+avant la carte vide).
+
+- **Cause : `experimentalBlurMethod="dimezisBlurView"`** sur `GlassToast`. Un flou n'est
+  **pas une propriété**, c'est un calcul : il doit savoir ce qu'il y a derrière. iOS a une
+  primitive système (`UIVisualEffectView`), gratuite. Android n'en a pas → la lib **capture
+  ce qui est derrière, réduit, floute et redessine, à chaque frame**, plus une passe de rendu
+  supplémentaire de la hiérarchie pour obtenir la capture. Pendant les **4 s** du toast. La
+  doc d'expo-blur le dit sur cette prop exacte : *« experimental on Android and may cause
+  performance and graphical issues »*, défaut `'none'` — on avait opté pour l'inverse.
+  ⚠️ **Ça coûtait déjà autant avant ; ça ne se voyait pas tant que rien d'autre ne réclamait
+  ces frames.** La transition est le seul moment où le budget est déjà pris.
+- **Second mécanisme, la sortie en trois temps.** Sonner éteint un toast avec **une seule
+  opacité** sur son conteneur. Android ne rend pas le groupe hors écran pour estomper le
+  résultat : il **fait descendre l'alpha et le multiplie dans chaque enfant**. Des couches
+  translucides calibrées pour se composer se défont donc en partant. L'ombre `elevation` est
+  pire : dessinée par le système à partir du contour, elle n'entre pas du tout dans cet alpha.
+- **Correctif = enlever, pas ajouter.** Le flou parti, les couches qui n'existaient que pour
+  composer du verre par-dessus lui étaient de l'échafaudage. Sur Android la carte est
+  maintenant **une seule vue opaque + son texte**, bordure hairline au lieu de l'`elevation`.
+  iOS ne bouge pas d'un pixel. **Le composant est plus court qu'avant.**
+- **`contentStyle` sur les routes jardin** (`_layout.tsx`) : le fond d'écran du navigateur
+  vient du thème React Navigation (`#ffffff` clair, **`#121212` sombre**) et transparaît
+  pendant qu'un écran s'anime. Posé pendant l'enquête ; **n'a pas suffi à lui seul**, mais
+  gardé — c'est correct dans les deux thèmes.
+
+### 5. Décisions utilisateur — ne pas relitiger
+
+- Le retour du zoom **se dissout**, il ne se pose pas. L'animation iOS home grid est
+  **conservée** (l'option « navigation classique sans animation » a été écartée).
+- Les boutons retour **nomment leur destination**. **Pas** de poignée (grabber) : les deux
+  niveaux sont plein écran, une poignée annonce une feuille avec quelque chose derrière.
+- Marche entre les jours **bornée au mois**.
+- Haptique = **nombre de pulsations fixe**, aligné sur la durée fixe du compteur.
+- **Pas de flou Android** sur le toast. Le verre reste un choix iOS.
+- L'utilisateur a explicitement demandé de **ne pas empiler des correctifs partout** —
+  d'où le refus d'ajouter `needsOffscreenAlphaCompositing` « au cas où ».
+
+### 6. Fichiers
+
+**Nouveau :** `components/use-page-slide.ts`.
+**Modifiés :** `components/{expansion.ts, expanding-surface.tsx, use-expansion.ts,
+month-zoom.tsx, day-zoom.tsx, zoom-back-button.tsx, glass-toast.tsx}`, `use-bloom-lab.ts`,
+`app/_layout.tsx`. (+ tout le lot de la session (4), committé tel quel en #12.)
+
+### 7. Vérifications
+
+`type-check` **0** et `lint` **0 erreur / 14 warnings préexistants** à chaque étape — y
+compris **branche par branche, en isolant chaque commit au `git stash`**, pour qu'aucune des
+trois PR ne casse `main` toute seule. `expo export --platform ios` → bundle OK.
+**Vu tourner** sur Android physique (fluidité confirmée corrigée par l'utilisateur) et sur
+simulateur iOS.
+
+### 8. À faire ensuite
+
+1. **Écran Classement social** en fausses données — le prochain gros morceau, en attente
+   depuis quatre sessions (avatars = `FlowerAvatar`, tendance = `TierSquares` en ligne,
+   couleurs = rampe `tiers`).
+2. **Découvrabilité du swipe latéral**, maintenant à **deux niveaux** (mois *et* jour) et
+   sans chevrons. Piste proposée, non faite : une rangée de points sous la grille. C'est le
+   seul point de conception laissé ouvert.
+3. Retirer les **outils dev** et les **mocks** (seed, clé `…v3`) avec la vraie source de pas.
+4. **Asset `profile-poppy.png` = 2,47 Mo (1254×1254)** — soupçonné un moment dans l'enquête
+   Android, jamais confirmé ni corrigé. À redimensionner si l'écran Niveau se remet à
+   accrocher au montage.
+
+### 9. À juger sur appareil
+
+Le réglage `COUNTER_TICKS = 16` (trop dense ? pas assez ?). Le rendu de la carte de toast
+Android sans verre. Le fondu de couleur entre paliers en marchant d'un jour à l'autre.
+
+### Suggested skills
+
+- **`animate-expo`** — toujours la référence des sessions garden.
+- **`apple-design`** — la grammaire du zoom (mouvement physique, interruptibilité).
+- **`ui-review`** / **`emil-design-eng`** — pour juger le rendu sur appareil.
+- ⚠️ **Ne pas** invoquer `animations` / `improve-animations` / `review-animations` : orientés
+  web (CSS, Framer Motion), inutiles ici.
+
+### Rappels d'environnement
+
+- Expo **SDK 54**, RN 0.81.5, Reanimated **4.1.6**, Gesture Handler 2.28,
+  `react-native-worklets` 0.7.2, `expo-blur` 15, `expo-haptics` 15. **Rien à installer.**
+- Commandes : `pnpm --filter mobile type-check`, `pnpm --filter mobile lint`,
+  `pnpm exec expo export --platform ios` (depuis `apps/mobile`).
+- **Pas de trailer `Co-Authored-By` / `Claude-Session`** dans les commits de ce repo.
+- L'utilisateur délègue push/PR/merge, et attend un **découpage en plusieurs PR** quand les
+  sujets sont distincts (ici 4).
+
+---
+
+## Session 2026-08-29 (4) — zoom façon **iOS home grid** : heatmap → **mois en tuiles** → **jour plein écran**
+
+**Date :** 2026-08-29 · **Repo :** `/Users/thomas/Documents/dev/molio`
+**Branche :** `main` · **État git :** ⚠️ **corrigé par la session (5) :** tout ce qui suit
+était non committé au moment de l'écriture ; la (5) l'a committé (PR **#12**), avec le
+reliquat de la (3) (PR **#13**). Le texte d'origine est conservé tel quel ci-dessous.
+**À lire d'abord :** la session 2026-08-29 (2) (fenêtre glissante 52 semaines) puis la (3).
+
+**Prochaine session (demande explicite de l'utilisateur) : « continuer le travail sur les
+animations de la grille avec les détails ».** Tout ce qui suit est écrit pour ça.
+
+### 1. Ce qui a été livré
+
+Deux niveaux d'expansion en cascade, à partir de la heatmap de l'écran Stats :
+
+1. **Tap sur la heatmap** → les **colonnes du mois touché** (pas la grille entière) s'étendent
+   en plein écran ; l'écran Stats se floute derrière. Écran mois = **4 tuiles par ligne**,
+   dans l'ordre du 1 au 31, numéro du jour **sous** chaque tuile, mois seul en haut.
+2. **Tap sur une tuile** → elle s'étend en plein écran **dans la couleur de son palier**, avec
+   **date + pas** (rien d'autre). Retour = **swipe vers le bas** (recontraction dans la case)
+   ou « ‹ Retour ».
+
+Référence d'origine : la démo **`ios-home-grid`** de reactiive.io, dont le code est
+open-source — `src/animations/ios-home-grid/` dans `github.com/enzomanuelmangano/demos`
+(fichiers utiles : `navigation/expansion-provider.tsx`, `navigation-item.tsx`,
+`DetailScreenWrapper.tsx`, `MainScreenWrapper.tsx`). **Lire ces 4 fichiers avant de toucher
+aux animations** — les valeurs de ressort viennent de là.
+
+**Écart assumé avec la démo :** elle passe par une vraie navigation (provider à la racine +
+push d'écran à la fin du ressort). Ici tout est **local à l'écran Stats** : des overlays
+`position: absolute` montés sur un `useState`. Moins de pièces, pas de bagarre avec les
+transitions d'expo-router. Conséquence à connaître : voir « Risques » ci-dessous.
+
+### 2. Architecture des animations (ce qu'il faut savoir pour continuer)
+
+- **`components/expansion.ts`** — le seul endroit où vivent la **physique** et la géométrie :
+  `EXPAND_SPRING` (mass .1 / damping 24 / stiffness 25 → **suramorti, ratio ≈ 7,6**, glisse
+  sans rebond), `COLLAPSE_SPRING` (ratio ≈ 0,98, plus raide → le retour est plus rapide que
+  l'aller), `SCREEN_RADIUS = 44`, et le type `ExpandOrigin` (rect en coordonnées **page**).
+- **`components/expanding-surface.tsx`** — la primitive : une `Animated.View` qui interpole
+  width/height/translate/borderRadius de l'`origin` jusqu'au plein écran. **Détail central :**
+  le contenu est posé **une fois en taille écran et contre-translaté**, donc la surface
+  s'ouvre *comme une fenêtre* au-dessus de lui — rien ne se re-layoute pendant l'animation,
+  c'est ce qui fait lire l'ensemble comme un seul objet. Opacité du contenu montée entre
+  `progress` 0,35 et 0,8.
+- **`components/use-expansion.ts`** — un niveau de zoom : ouvre au montage, expose `collapse`,
+  le **swipe-down** (friction 0.3, `Math.pow(…, 1.2)`, scale plancher 0,7, seuils 150 px /
+  900 px·s⁻¹) et le bouton retour Android. `onClose` n'est appelé **qu'à l'atterrissage** du
+  ressort de fermeture.
+- **`components/month-zoom.tsx`** — niveau 1. Contient aussi `useMonthPaging` (slide+fade de
+  240 ms, `PAGE_SHIFT = 28`), `useDayPicker` (un seul `Gesture.Tap` pour toute la grille +
+  un seul `measure()`), `tileGeometry()` et le rendu des tuiles.
+- **`components/day-zoom.tsx`** — niveau 2.
+
+**Contraintes du repo rencontrées (ne pas les redécouvrir) :**
+- `max-lines-per-function: 110` — `MonthZoom` et `GardenStatsScreen` ont déjà été découpés
+  pour repasser dessous. Toute addition force une extraction.
+- **`eslint-plugin-react-compiler`** : une directive `'worklet'` **dans un hook** fait bailler
+  le compilateur sur tout le hook, qui casse ensuite les `useCallback` du même hook
+  (« Existing memoization could not be preserved »). D'où `cellIndexAt` **en portée module**
+  dans `month-zoom.tsx`, et `pick`/`closeDay` en fonctions simples. Même piège si on ajoute un
+  worklet ailleurs.
+- `Gesture.Race(...)` **n'a pas** de `.enabled()` — il faut l'appeler sur chaque geste enfant
+  (c'est ce qui coupe les gestes du mois quand le jour est ouvert).
+- `collapsable={false}` **obligatoire** sur toute vue qu'on `measure()` (Fabric), sinon `null`.
+- `scheduleOnRN` (react-native-worklets) est l'idiome maison, pas `runOnJS`.
+
+### 3. Décisions utilisateur — ne pas relitiger
+
+- Zoom en **deux niveaux** : grille → **mois**, mois → **jour**. Animation = celle de la démo
+  iOS home grid.
+- Écran mois = **grille de 4 tuiles par ligne** façon écran d'accueil (l'utilisateur a fourni
+  une capture de référence), **pas un calendrier** : ni alignement par jour de semaine, ni
+  en-tête L M M J V S D, ni cases vides de début/fin de mois.
+- **Mois seul en haut**, **numéro du jour sous chaque tuile**. Les chevrons ‹ › de navigation
+  ont été **retirés** à cette occasion — on change de mois au **swipe latéral**.
+- Détail du jour = **plein écran**, **fond = la couleur du palier de la case**, contenu =
+  **date + pas**, rien d'autre.
+
+### 4. Choix de conception faits par l'agent (discutables, à valider)
+
+- **Rien ne défile** dans l'écran mois : la tuile se dimensionne sur la plus contraignante des
+  deux dimensions (57 px sur un iPhone 390×844), donc 31 jours = 8 lignes tiennent d'un écran.
+  Motif : un `ScrollView` vertical dans une surface qu'on referme aussi par un swipe vers le
+  bas = bagarre de gestes.
+- **L'aire tactile est la case entière** (85 × 85), pas la tuile (57).
+- **Aujourd'hui** = numéro en gras + encre pleine (un anneau sur la tuile salissait l'aspect
+  « icône »). **Jours à venir** = contour vide, non tappables. **Jour à 0 pas** = ouvrable,
+  affiche « Aucun pas ».
+- `inkOnTier()` ajouté à `palette.ts` : encre crème sur les paliers 3-4, encre du jardin en
+  dessous. Sert au fond coloré du détail du jour.
+
+### 5. Aperçu visuel (déjà produit, ne pas refaire)
+
+Artifact « Le mois en tuiles » — rendu aux dimensions réelles + géométrie calculée :
+https://claude.ai/code/artifact/8617f0cd-bebf-4aad-a74e-a29f06a61c67
+(Republier sur **la même URL** si on le met à jour.)
+
+### 6. Fichiers de la session
+
+**Nouveaux** (`apps/mobile/src/features/garden/`) : `calendar.ts` (dates FR, sans `Intl`),
+`components/expansion.ts`, `components/expanding-surface.tsx`, `components/use-expansion.ts`,
+`components/month-cells.ts`, `components/month-zoom.tsx`, `components/day-zoom.tsx`,
+`components/zoom-back-button.tsx`.
+**Modifiés** : `garden-stats-screen.tsx` (geste + overlay ; les helpers de date sont partis
+dans `calendar.ts`, extraction de `useMonthZoom` et `ActivityGrid` pour la limite de lignes),
+`palette.ts` (`inkOnTier`).
+
+### 7. Vérifications faites
+
+`pnpm --filter mobile type-check` → **0**. `lint` → **0 erreur, 14 warnings**
+(*exactement* les préexistants `react-refresh`, aucun ajouté — c'est pour ça que les
+constantes sont dans `expansion.ts` et pas dans le fichier du composant).
+`pnpm exec expo export --platform ios` → **bundle OK** (valide que les worklets passent le
+plugin Babel). **RIEN vu tourner sur appareil ni sur simulateur.**
+
+### 8. Risques connus / à juger sur appareil — le cœur de la prochaine session
+
+1. **Délai tap → début d'expansion.** L'overlay se monte via `useState`, donc l'animation
+   démarre après un aller-retour JS (~1 frame). La démo, elle, démarre le ressort **sur le
+   thread UI** dans le geste et ne navigue qu'à la fin. Si ça se sent : garder l'overlay monté
+   en permanence (`pointerEvents: 'none'` + opacité 0) et ne piloter que des shared values.
+   **C'est le premier chantier à évaluer.**
+2. **`measure()` pendant l'animation.** Un tap sur une tuile pendant l'ouverture du mois
+   mesure une position intermédiaire — visuellement correct, mais jamais testé.
+3. **Le flou (`expo-blur`) sur Android** ne floute pas le dessous sans
+   `experimentalBlurMethod="dimezisBlurView"`. `BLUR_INTENSITY = 40`, monté par
+   `useAnimatedProps` (obligatoire : une shared value passée en prop gèle à la valeur par
+   défaut — commenté sur place).
+4. **Course de gestes** : les gestes du mois sont coupés (`.enabled(!openDay)`) quand le jour
+   est ouvert ; le `Gesture.Tap` des tuiles vit dans un `GestureDetector` imbriqué. À vérifier
+   au doigt, notamment le swipe-down qui part d'une tuile.
+5. **Découvrabilité du swipe latéral** entre mois, maintenant que les chevrons ont sauté.
+   Piste proposée, non faite : une rangée de points sous la grille.
+6. `SCREEN_RADIUS = 44` face au vrai arrondi de l'écran ; la barre d'état passe en `light` sur
+   les paliers 3-4 via `setStatusBarStyle` (restaurée à `dark` au démontage) — à voir en vrai.
+7. **Aucune animation d'entrée sur les tuiles** du mois (elles apparaissent avec le contenu,
+   en bloc). Un stagger à l'ouverture est la piste évidente si l'utilisateur en veut plus.
+
+### 9. À faire ensuite
+
+1. **Les animations, avec les détails** (demande explicite) — partir du point 8.1, puis
+   8.7 (stagger d'entrée), puis le rythme relatif ouverture/fermeture des **deux** niveaux.
+2. **Committer** : branche + PR pour cette session **et** pour `garden-home-screen.tsx` resté
+   de la session (3).
+3. Toujours en attente : **écran Classement social** en fausses données ; retirer les outils
+   dev et les mocks (seed, clé `…v3`) quand la vraie source de pas arrivera.
+
+### Suggested skills
+
+- **`animate-expo`** — la référence des sessions garden, et exactement le sujet de la
+  prochaine (Reanimated 4, gestes, ressorts, dégradation). À invoquer **avant** de toucher aux
+  ressorts.
+- **`apple-design`** — pour le fond de la question : mouvement physique, interruptibilité,
+  transitions gouvernées par le geste. C'est la grammaire de la démo qu'on copie.
+- **`ui-review`** / **`emil-design-eng`** — pour juger le rendu une fois vu sur appareil.
+- **`code-review`** — avant le commit groupé (rien de cette feature n'est committé).
+- ⚠️ **Ne pas** invoquer `animations` / `improve-animations` / `review-animations` : ils sont
+  orientés web (CSS, Framer Motion), inutiles ici.
+
+### Rappels d'environnement
+
+- Expo **SDK 54**, RN 0.81.5, Reanimated **4.1.6**, Gesture Handler 2.28,
+  `react-native-worklets` 0.7.2, `expo-blur` 15, `expo-haptics` 15. **Rien à installer.**
+- `apps/mobile/CLAUDE.md` annonce « Expo SDK 54 » — c'est bien la version réelle du
+  `package.json`.
+- Commandes : `pnpm --filter mobile type-check`, `pnpm --filter mobile lint`,
+  `pnpm exec expo export --platform ios` (depuis `apps/mobile`, pour vérifier le bundle sans
+  build natif).
+- **Pas de trailer `Co-Authored-By` / `Claude-Session`** dans les commits de ce repo.
+
+---
+
+## Session 2026-08-29 (3) — Stats : intitulés **au-dessus** + relief **letterpress** ; toast de sync qui **se ferme au changement d'écran**
+
+**Date :** 2026-08-29 · **Repo :** `/Users/thomas/Documents/dev/molio`
+**Branche :** `main` · **État git :** **NON committé** — 2 fichiers modifiés
+(`garden-stats-screen.tsx`, `garden-home-screen.tsx`), rien sur une branche. L'utilisateur
+délègue push/PR/merge comme d'habitude.
+**À lire d'abord :** la section 2026-08-29 (2) ci-dessous (fenêtre glissante 52 semaines).
+
+Petite session **design + comportement**. **Tout passe `pnpm --filter mobile type-check` (0)
+et `lint` (0 erreur ; 14 warnings préexistants). Rien vu tourner sur appareil.**
+
+### 1. Écran Stats — présentation des 2 stats (`garden-stats-screen.tsx`)
+- **Intitulé AU-DESSUS du chiffre** (avant : chiffre puis libellé dessous). Le petit espace de
+  4 px a suivi du libellé (désormais en haut) vers la valeur (désormais dessous) — l'écart
+  visuel entre les deux est identique.
+- **Libellés renommés** : « jours de série » → **« Série actuelle »**, « meilleur jour » →
+  **« Meilleur jour »**.
+
+### 2. Écran Stats — relief **letterpress** sur les 2 stats (option **B**)
+Demande : donner du relief aux 2 stats **sans panneau à fond distinct**, en gardant le papier crème.
+Un **artifact de comparaison** a été produit (5 pistes A→E) :
+https://claude.ai/code/artifact/2d7afc64-9bee-492a-b751-bf531bb3c100
+- **Cheminement** : l'utilisateur a d'abord essayé **C** (tuiles surélevées de *même* crème via
+  `boxShadow`, trait séparateur retiré), puis un **fond blanc** sur ces tuiles — **les deux ont
+  été abandonnés**, retour à **B**.
+- **Retenu = B (gravé)** : `textShadow` clair **net** (rgba blanc, `radius: 0`) sous les glyphes →
+  le texte lit « pressé dans le papier ». Offset `height: 1.5` sur la valeur, `1` sur l'intitulé.
+  **Aucun panneau, aucun changement de layout**, le **trait séparateur est conservé**.
+
+### 3. Home — le toast de sync **se ferme quand on quitte l'écran** (`garden-home-screen.tsx`)
+Problème : après un pull-to-refresh, le toast central (`sonner-native`, position `center`) reste
+~4 s ; si on va tout de suite sur l'écran Niveau, il **flottait par-dessus**.
+- `useSyncPhase` **capture l'id** du toast (`toast.custom(...)` le retourne) dans une `ref`.
+- Un **`useFocusEffect`** (idiome déjà utilisé dans `use-unseen-level-up.ts`) **ferme ce toast au
+  blur** de la Home via **`toast.dismiss(id)`**. Ciblé sur l'**id précis** → ne tue pas le toast de
+  level-up de l'écran Niveau, qui s'affiche *après* la navigation. Import `useFocusEffect` ajouté.
+
+### Fichiers de la session
+Modifiés : `garden-stats-screen.tsx` (intitulés en haut + renommage + letterpress),
+`garden-home-screen.tsx` (dismiss du toast de sync au blur). **Non committés.**
+
+### Décisions utilisateur — ne pas relitiger
+- Stats = **intitulé au-dessus du chiffre**, libellés **« Série actuelle » / « Meilleur jour »**.
+- Relief = **letterpress (B, `textShadow`)** — **pas** les tuiles surélevées (C), **pas** de fond blanc.
+- Le **toast de sync se ferme au changement d'écran** (dismiss ciblé sur son id, pas `dismiss()` global).
+
+### À faire ensuite
+1. **Committer** cette session (2 fichiers sur `main`, non committés) — branche + PR comme d'habitude.
+2. **Écran Classement social** en fausses données — toujours le prochain gros morceau.
+3. Retirer les **outils dev** et **mocks** (seed, clé `…v3`) avec la vraie source de pas.
+
+### À juger sur appareil (rien vu tourner)
+Rendu du **letterpress** (`textShadow` iOS/Android, contraste sur le crème) — si trop subtil, monter
+l'offset à `2` ou assombrir un peu le texte ; s'il bave, réduire à `1`. Fermeture du toast au moment
+réel de la navigation Home → Niveau.
+
+---
+
 ## Session 2026-08-29 (2) — grille Stats en **fenêtre glissante 52 semaines** (finit aujourd'hui), légende **− / +**, libellé d'année + hint retirés
 
 **Date :** 2026-08-29 · **Repo :** `/Users/thomas/Documents/dev/molio`
