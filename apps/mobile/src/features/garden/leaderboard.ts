@@ -1,7 +1,7 @@
 import type { Hue } from './palette';
 import type { DayHistory } from './use-day-history';
 
-import { STEPS_PER_LEVEL, tierForDay } from './bloom';
+import { tierForDay } from './bloom';
 import { shiftDays } from './calendar';
 import { FRIENDS } from './friends';
 import { PROFILE } from './profile';
@@ -24,12 +24,6 @@ export type Standing = {
   steps: number;
   /** `TREND_DAYS` tiers, oldest first; the last one is today. */
   tiers: number[];
-  /**
-   * Same formula as the level screen (`Math.floor(steps / STEPS_PER_LEVEL)`),
-   * fed the same day's steps — a walker's level for the badge on their row is
-   * just their level *today*, not a separate lifetime total nobody mocks.
-   */
-  level: number;
   isMe: boolean;
 };
 
@@ -67,7 +61,6 @@ export function buildStandings(history: DayHistory, today: Date): Standing[] {
         ...who,
         steps,
         tiers: days.map(tierForDay),
-        level: Math.floor(steps / STEPS_PER_LEVEL),
       };
     })
     .sort((a, b) => b.steps - a.steps || (a.name < b.name ? -1 : 1));

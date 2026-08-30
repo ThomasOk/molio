@@ -243,26 +243,17 @@ function StandingRow({
         {rank}
       </Text>
 
-      <View style={styles.avatar}>
-        <Image
-          source={ROW_AVATAR}
-          contentFit="cover"
-          style={{
-            width: AVATAR,
-            height: AVATAR,
-            borderRadius: AVATAR / 2,
-            borderWidth: Math.max(1.5, AVATAR * 0.04),
-            borderColor: palette.cardBorder,
-          }}
-        />
-        {/* Same badge as the level screen's portrait (`palette.ring` ring,
-            paper-coloured seam), sized down for a row instead of the big
-            character-sheet avatar — and fed the SAME formula, just today's
-            steps in place of the running total nobody mocks per friend. */}
-        <View style={[styles.levelBadge, { backgroundColor: palette.ring, borderColor: GARDEN_PAPER }]}>
-          <Text style={styles.levelBadgeText}>{standing.level}</Text>
-        </View>
-      </View>
+      <Image
+        source={ROW_AVATAR}
+        contentFit="cover"
+        style={{
+          width: AVATAR,
+          height: AVATAR,
+          borderRadius: AVATAR / 2,
+          borderWidth: Math.max(1.5, AVATAR * 0.04),
+          borderColor: palette.cardBorder,
+        }}
+      />
 
       <View style={styles.who}>
         <Text numberOfLines={1} style={[styles.name, { color: palette.ink }]}>
@@ -386,30 +377,6 @@ const styles = StyleSheet.create({
     fontFamily: strideFonts.semibold,
     fontSize: 13,
     lineHeight: 17,
-    fontVariant: ['tabular-nums'],
-  },
-  // `alignItems: 'center'` centres the badge horizontally on the unconstrained
-  // axis, same trick the level screen's portrait uses for its own badge.
-  avatar: {
-    width: AVATAR,
-    height: AVATAR,
-    alignItems: 'center',
-  },
-  levelBadge: {
-    position: 'absolute',
-    bottom: -4,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  levelBadgeText: {
-    fontFamily: strideFonts.black,
-    fontSize: 9,
-    lineHeight: 11,
-    color: '#FFFFFF',
     fontVariant: ['tabular-nums'],
   },
   who: {
