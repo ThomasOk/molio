@@ -4,7 +4,7 @@ import type { GardenPalette } from './palette';
 import { router, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as React from 'react';
-import { Pressable, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, useWindowDimensions, View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   cancelAnimation,
@@ -19,11 +19,11 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { toast } from 'sonner-native';
 
-import { strideFonts } from '@/lib/theme';
 import { BANDS, clamp, formatSteps, MAX_STEPS } from './bloom';
 import { AlertMark } from './components/alert-mark';
 import { AnimatedSteps } from './components/animated-steps';
 import { GardenFlipbook } from './components/garden-flipbook';
+import { GardenText } from './components/garden-text';
 import { GlassToast } from './components/glass-toast';
 import { ProfileFlower } from './components/profile-flower';
 import { PullLoader } from './components/pull-loader';
@@ -174,14 +174,14 @@ export function GardenHomeScreen() {
 
       <AddStepsButton
         palette={palette}
-        bottom={insets.bottom + 12}
+        bottom={DEV_BUTTON_BOTTOM}
         disabled={lab.refreshing}
         onPress={() => lab.sync(ADD_STEPS_AMOUNT)}
       />
 
       <ResetButton
         palette={palette}
-        bottom={insets.bottom + 12}
+        bottom={DEV_BUTTON_BOTTOM}
         onPress={() => {
           lab.reset();
           clearLevelProgress();
@@ -193,6 +193,14 @@ export function GardenHomeScreen() {
 
 /** How many steps the dev "grab steps" button adds — enough to vault several levels. */
 const ADD_STEPS_AMOUNT = 10000;
+
+/**
+ * Bottom offset for the dev buttons. This screen now sits inside the Home tab,
+ * whose bar already reserves the bottom safe area (see `StrideTabBar`) — so unlike
+ * the top-anchored elements above, this one must not add `insets.bottom` again, or
+ * the buttons float in a large gap above the bar instead of sitting near it.
+ */
+const DEV_BUTTON_BOTTOM = 16;
 
 /** The profile portrait, top-left — the way into the level / character screen. */
 function ProfileButton({
@@ -473,29 +481,4 @@ function SyncHint({
       </GardenText>
     </Animated.View>
   );
-}
-
-// ---------------------------------------------------------------------------
-
-type GVariant = 'band' | 'caption';
-
-const G_STYLES: Record<GVariant, TextStyle> = {
-  band: { fontFamily: strideFonts.bold, fontSize: 17, lineHeight: 22 },
-  caption: { fontFamily: strideFonts.medium, fontSize: 13, lineHeight: 18 },
-};
-
-/** The garden keeps its type on its own palette, apart from the Stride tokens. */
-function GardenText({
-  palette,
-  variant,
-  style,
-  children,
-}: {
-  palette: GardenPalette;
-  variant: GVariant;
-  style?: TextStyle;
-  children: React.ReactNode;
-}) {
-  const color = variant === 'caption' ? palette.inkSoft : palette.ink;
-  return <Text style={[G_STYLES[variant], { color }, style]}>{children}</Text>;
 }

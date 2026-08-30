@@ -4,8 +4,17 @@ import { Platform } from 'react-native';
 import { SystemBars } from 'react-native-edge-to-edge';
 import { useUniwind } from 'uniwind';
 
-type Props = { hidden?: boolean };
-export function FocusAwareStatusBar({ hidden = false }: Props) {
+type Props = {
+  hidden?: boolean;
+  /**
+   * Force the icon colour instead of deriving it from the system theme. For a
+   * screen pinned to one background regardless of dark mode — the garden's
+   * `ComingSoonScreen` placeholders, which stay on the light `gardenPalettes`
+   * paper until Home has dark art (ADR 0001) — the icons must stay pinned too.
+   */
+  style?: 'dark' | 'light';
+};
+export function FocusAwareStatusBar({ hidden = false, style }: Props) {
   const isFocused = useIsFocused();
   const { theme } = useUniwind();
 
@@ -15,7 +24,7 @@ export function FocusAwareStatusBar({ hidden = false }: Props) {
   return isFocused
     ? (
         <SystemBars
-          style={theme === 'light' ? 'dark' : 'light'}
+          style={style ?? (theme === 'light' ? 'dark' : 'light')}
           hidden={hidden}
         />
       )

@@ -2,10 +2,24 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { StrideText } from '@/components/ui/stride-text';
+import { GardenText } from '@/features/garden/components/garden-text';
+import { gardenPalettes } from '@/features/garden/palette';
 
 /**
- * Stride's bottom navigation.
+ * The app's bottom navigation.
+ *
+ * Coloured from `gardenPalettes` rather than the Stride tokens: Home is the
+ * garden now (2026-08-30 handoff), and a Stride-dark bar under a cream screen
+ * read as two different apps stacked on top of each other. Progress/Stats/
+ * Profile carry the same palette (see `ComingSoonScreen`) so the bar doesn't
+ * clash the moment you switch tabs.
+ *
+ * Pinned to `gardenPalettes.light`, not the system scheme — same constraint as
+ * `GardenHomeScreen`: the flipbook art only exists on the cream paper (ADR
+ * 0001, amendment 2026-08-25, "pas de mode sombre sur Home sans refaire
+ * peindre l'art"). A theme-aware bar would turn dark under a Home that stays
+ * cream regardless, which is the inconsistency this bar exists to avoid.
+ * Revisit once Home has dark art.
  *
  * The active marker is a neutral pill rather than an icon, deliberately: the
  * design keeps every piece of chrome independent of the progress cell's shape,
@@ -13,13 +27,19 @@ import { StrideText } from '@/components/ui/stride-text';
  */
 export function StrideTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const palette = gardenPalettes.light;
 
   return (
     <View
-      className={`
-        flex-row border-t border-stride-hairline bg-stride-bg px-6 pt-[14px]
-      `}
-      style={{ paddingBottom: Math.max(insets.bottom, 22) }}
+      className="flex-row px-6 pt-[14px]"
+      style={{
+        borderTopWidth: StyleSheet.hairlineWidth,
+        // Black, not `cardBorder` — a hairline of that soft cream tone barely
+        // read against the paper; explicit ask for a firm line under the nav.
+        borderTopColor: '#000000',
+        backgroundColor: palette.bg,
+        paddingBottom: Math.max(insets.bottom, 22),
+      }}
     >
       {state.routes.map((route, index) => {
         const { options } = descriptors[route.key];
@@ -55,20 +75,27 @@ export function StrideTabBar({ state, descriptors, navigation }: BottomTabBarPro
             }}
           >
             <View
-              className={`
-                h-[6px] rounded-full
-                ${focused ? 'w-[18px] bg-stride-accent' : 'w-[6px] bg-stride-border'}
-              `}
+              style={{
+                height: 6,
+                borderRadius: 3,
+                width: focused ? 18 : 6,
+                // The completed-ring green, not the XP coral — this pill marks
+                // where you are, closer to "goal met" than to a reward.
+                backgroundColor: focused ? palette.ringDone : palette.chip,
+              }}
             />
-            <StrideText
-              variant="label-sm"
-              className={`
-                text-[8.5px] tracking-[0.85px]
-                ${focused ? 'text-stride-text' : 'text-stride-muted'}
-              `}
+            <GardenText
+              palette={palette}
+              variant="label"
+              style={{
+                fontSize: 8.5,
+                lineHeight: 11,
+                letterSpacing: 0.85,
+                color: focused ? palette.ink : palette.label,
+              }}
             >
               {label}
-            </StrideText>
+            </GardenText>
           </Pressable>
         );
       })}
