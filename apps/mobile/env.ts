@@ -14,6 +14,10 @@ const envSchema = z.object({
   EXPO_PUBLIC_ASSOCIATED_DOMAIN: z.string().url().optional(),
   EXPO_PUBLIC_VAR_NUMBER: z.number(),
   EXPO_PUBLIC_VAR_BOOL: z.boolean(),
+  EXPO_PUBLIC_SUPABASE_URL: z.string().url(),
+  // The anon/public key is meant to ship in the client bundle — it's the
+  // service_role key and the DB password that must never get an EXPO_PUBLIC_ var.
+  EXPO_PUBLIC_SUPABASE_ANON_KEY: z.string(),
 
   // only available for app.config.ts usage
   APP_BUILD_ONLY_VAR: z.string().optional(),
@@ -58,6 +62,8 @@ const _env: z.infer<typeof envSchema> = {
   EXPO_PUBLIC_ASSOCIATED_DOMAIN: process.env.EXPO_PUBLIC_ASSOCIATED_DOMAIN,
   EXPO_PUBLIC_VAR_NUMBER: Number(process.env.EXPO_PUBLIC_VAR_NUMBER ?? 0),
   EXPO_PUBLIC_VAR_BOOL: process.env.EXPO_PUBLIC_VAR_BOOL === 'true',
+  EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL ?? '',
+  EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '',
   APP_BUILD_ONLY_VAR: process.env.APP_BUILD_ONLY_VAR,
 };
 
