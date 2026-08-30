@@ -13,6 +13,7 @@
     "type-check": "pnpm --recursive --if-present type-check"
   },
   "devDependencies": {
+    "supabase": "^2.116.0",
     "typescript": "^5.9.3"
   }
 }
