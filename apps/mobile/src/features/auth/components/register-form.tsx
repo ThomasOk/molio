@@ -9,6 +9,11 @@ import { Button, Input, Text, View } from '@/components/ui';
 import { getFieldError } from '@/components/ui/form-utils';
 
 const schema = z.object({
+  name: z
+    .string({
+      message: 'Name is required',
+    })
+    .min(1, 'Name is required'),
   email: z
     .string({
       message: 'Email is required',
@@ -25,13 +30,14 @@ const schema = z.object({
 
 export type FormType = z.infer<typeof schema>;
 
-export type LoginFormProps = {
+export type RegisterFormProps = {
   onSubmit?: (data: FormType) => Promise<void> | void;
 };
 
-export function LoginForm({ onSubmit = () => {} }: LoginFormProps) {
+export function RegisterForm({ onSubmit = () => {} }: RegisterFormProps) {
   const form = useForm({
     defaultValues: {
+      name: '',
       email: '',
       password: '',
     },
@@ -56,9 +62,23 @@ export function LoginForm({ onSubmit = () => {} }: LoginFormProps) {
             testID="form-title"
             className="pb-6 text-center text-4xl font-bold"
           >
-            Sign In
+            Create Account
           </Text>
         </View>
+
+        <form.Field
+          name="name"
+          children={field => (
+            <Input
+              testID="name-input"
+              label="Name"
+              value={field.state.value}
+              onBlur={field.handleBlur}
+              onChangeText={field.handleChange}
+              error={getFieldError(field)}
+            />
+          )}
+        />
 
         <form.Field
           name="email"
@@ -94,16 +114,16 @@ export function LoginForm({ onSubmit = () => {} }: LoginFormProps) {
           selector={state => [state.isSubmitting]}
           children={([isSubmitting]) => (
             <Button
-              testID="login-button"
-              label="Login"
+              testID="register-button"
+              label="Create account"
               onPress={form.handleSubmit}
               loading={isSubmitting}
             />
           )}
         />
 
-        <Link href="/register" className="mt-6 text-center text-gray-500 underline">
-          No account yet? Create one
+        <Link href="/login" className="mt-6 text-center text-gray-500 underline">
+          Already have an account? Sign in
         </Link>
       </View>
     </KeyboardAvoidingView>

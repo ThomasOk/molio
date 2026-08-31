@@ -15,6 +15,12 @@ export default function TabLayout() {
   if (status === 'signOut') {
     return <Redirect href="/login" />;
   }
+  if (status === 'idle') {
+    // `useAuthStore`'s `hydrate()` is now an async `supabase.auth.getSession()`
+    // call (unlike the old synchronous MMKV read) — render nothing rather than
+    // flash the tabs before we actually know whether there's a session.
+    return null;
+  }
   return (
     <Tabs
       screenOptions={{ headerShown: false }}

@@ -2,18 +2,24 @@ import type { LoginFormProps } from './components/login-form';
 import { useRouter } from 'expo-router';
 
 import * as React from 'react';
-import { FocusAwareStatusBar } from '@/components/ui';
+import { FocusAwareStatusBar, showErrorMessage } from '@/components/ui';
+import { useSignInWithPassword } from './api';
 import { LoginForm } from './components/login-form';
-import { useAuthStore } from './use-auth-store';
 
 export function LoginScreen() {
   const router = useRouter();
-  const signIn = useAuthStore.use.signIn();
+  const { mutateAsync: signIn } = useSignInWithPassword();
 
-  const onSubmit: LoginFormProps['onSubmit'] = (data) => {
-    console.log(data);
-    signIn({ access: 'access-token', refresh: 'refresh-token' });
-    router.push('/');
+  const onSubmit: LoginFormProps['onSubmit'] = async ({ email, password }) => {
+    try {
+      await signIn({ email, password });
+      // No back-stack entry for `/login` once signed in — there's nothing to
+      // go "back" to.
+      router.replace('/');
+    }
+    catch (error) {
+      showErrorMessage(error instanceof Error ? error.message : undefined);
+    }
   };
 
   return (
